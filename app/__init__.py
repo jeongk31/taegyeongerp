@@ -50,6 +50,18 @@ def create_app():
     app.register_blueprint(dashboard_bp)
     app.register_blueprint(admin_bp)
 
+    # Request logging middleware
+    @app.before_request
+    def log_request():
+        from flask import request
+        print(f"REQUEST: {request.method} {request.path}", flush=True)
+
+    @app.after_request
+    def log_response(response):
+        from flask import request
+        print(f"RESPONSE: {request.method} {request.path} -> {response.status_code}", flush=True)
+        return response
+
     # Health check endpoint
     @app.route('/health')
     def health_check():
