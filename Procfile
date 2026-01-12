@@ -1,1 +1,1 @@
-web: gunicorn -c gunicorn_config.py run:app
+web: python test_simple.py
