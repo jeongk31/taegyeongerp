@@ -15,7 +15,24 @@ def create_app():
 
     # Configuration
     app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'dev-secret-key-change-in-production')
-    app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv('SUPABASE_DB_URL', 'sqlite:///erp.db')
+
+    # Database configuration with connection pooling and IPv4 support
+    db_url = os.getenv('SUPABASE_DB_URL', 'sqlite:///erp.db')
+
+    # Add connection arguments for PostgreSQL to handle timeouts and pooling
+    if db_url.startswith('postgresql://'):
+        # Add connection pool settings for better stability
+        app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
+            'pool_size': 5,
+            'pool_recycle': 300,
+            'pool_pre_ping': True,
+            'connect_args': {
+                'connect_timeout': 10,
+                'options': '-c statement_timeout=60000'
+            }
+        }
+
+    app.config['SQLALCHEMY_DATABASE_URI'] = db_url
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
     # Initialize extensions
