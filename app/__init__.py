@@ -50,8 +50,19 @@ def create_app():
     app.register_blueprint(dashboard_bp)
     app.register_blueprint(admin_bp)
 
-    # Create tables
-    with app.app_context():
-        db.create_all()
+    # Health check endpoint
+    @app.route('/health')
+    def health_check():
+        return {'status': 'healthy', 'message': 'Application is running'}, 200
+
+    # Create tables (with error handling)
+    try:
+        with app.app_context():
+            print("Attempting to create database tables...", flush=True)
+            db.create_all()
+            print("Database tables created successfully", flush=True)
+    except Exception as e:
+        print(f"WARNING: Could not create tables on startup: {e}", flush=True)
+        print("Tables may already exist or database may not be accessible", flush=True)
 
     return app
