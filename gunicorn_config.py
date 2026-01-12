@@ -1,13 +1,16 @@
 """Gunicorn configuration for Railway deployment"""
 import multiprocessing
+import os
 
-# Bind to Railway's PORT
-bind = "0.0.0.0:8080"
+# Bind to Railway's PORT environment variable
+port = os.environ.get('PORT', '8080')
+bind = f"0.0.0.0:{port}"
+print(f"Gunicorn will bind to: {bind}", flush=True)
 
 # Worker configuration
 workers = 1  # Use single worker for debugging
 worker_class = "sync"
-threads = 2
+threads = 1  # Single thread for simplicity
 timeout = 120  # Increased timeout for slow database queries
 keepalive = 5
 
