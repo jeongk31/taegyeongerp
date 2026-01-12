@@ -55,6 +55,21 @@ def create_app():
     def health_check():
         return {'status': 'healthy', 'message': 'Application is running'}, 200
 
+    # Error handlers
+    @app.errorhandler(500)
+    def internal_error(error):
+        print(f"500 Internal Server Error: {error}", flush=True)
+        import traceback
+        traceback.print_exc()
+        return f"Internal Server Error: {error}", 500
+
+    @app.errorhandler(Exception)
+    def handle_exception(e):
+        print(f"Unhandled exception: {e}", flush=True)
+        import traceback
+        traceback.print_exc()
+        return f"An error occurred: {e}", 500
+
     # Create tables (with error handling)
     try:
         with app.app_context():
