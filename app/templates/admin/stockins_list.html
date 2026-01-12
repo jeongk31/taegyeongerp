@@ -1,0 +1,393 @@
+{% extends "base.html" %}
+{% block title %}입고 - 태경바이오 ERP{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h2>입고</h2>
+    <div class="d-flex gap-2 align-items-center">
+        <div class="export-buttons no-print">
+            <button class="btn btn-success btn-sm export-btn" onclick="exportTableToExcel('stockinsTable', '입고목록')">
+                <i class="bi bi-file-earmark-excel"></i> Excel
+            </button>
+            <button class="btn btn-danger btn-sm export-btn" onclick="exportTableToPDF('stockinsTable', '입고목록')">
+                <i class="bi bi-file-earmark-pdf"></i> PDF
+            </button>
+            <button class="btn btn-secondary btn-sm export-btn" onclick="printTable()">
+                <i class="bi bi-printer"></i> 인쇄
+            </button>
+        </div>
+        <a href="{{ url_for('admin.stockins_create') }}" class="btn btn-primary">입고하기</a>
+    </div>
+</div>
+
+<!-- Search Filters -->
+<div class="card mb-4">
+    <div class="card-body py-2 position-relative">
+        <button type="button" class="btn btn-sm btn-link position-absolute top-0 end-0 p-1 text-muted" id="toggleSearchBar" style="font-size: 0.7rem;">
+            <span id="toggleSearchIcon">▲</span>
+        </button>
+        <form method="GET" action="{{ url_for('admin.stockins_list') }}" id="searchForm">
+            <div id="searchFilters">
+                <!-- Row 1: Filter dropdowns -->
+                <div class="row g-2 align-items-end mb-2" style="font-size: 0.8rem;">
+                    {% if current_user.is_admin() %}
+                    <div class="col">
+                        <label class="form-label mb-1">지사</label>
+                        <select name="branch_id" class="form-select form-select-sm" style="font-size: 0.8rem;">
+                            <option value="">전체</option>
+                            {% for branch in branches %}
+                            <option value="{{ branch.id }}" {% if filters.branch_id == branch.id %}selected{% endif %}>{{ branch.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    {% endif %}
+                    <div class="col">
+                        <label class="form-label mb-1">품목</label>
+                        <select name="category" class="form-select form-select-sm" style="font-size: 0.8rem;">
+                            <option value="">전체</option>
+                            {% for cat in categories %}
+                            <option value="{{ cat }}" {% if filters.category == cat %}selected{% endif %}>{{ cat }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col">
+                        <label class="form-label mb-1">프랜차이즈</label>
+                        <select name="product_id" class="form-select form-select-sm" style="font-size: 0.8rem;">
+                            <option value="">전체</option>
+                            {% for product in products %}
+                            <option value="{{ product.id }}" {% if filters.product_id == product.id %}selected{% endif %}>{{ product.franchise.name if product.franchise else product.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col">
+                        <label class="form-label mb-1">입고업체</label>
+                        <select name="supplier_id" class="form-select form-select-sm" style="font-size: 0.8rem;">
+                            <option value="">전체</option>
+                            {% for supplier in suppliers %}
+                            <option value="{{ supplier.id }}" {% if filters.supplier_id == supplier.id %}selected{% endif %}>{{ supplier.company_name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                </div>
+                <!-- Row 2: Date range and buttons -->
+                <div class="row g-2 align-items-end" style="font-size: 0.8rem;">
+                    <div class="col-auto">
+                        <label class="form-label mb-1">기간</label>
+                        <div class="d-flex align-items-center gap-1">
+                            <input type="date" name="date_from" class="form-control form-control-sm" style="font-size: 0.8rem; width: 130px;" value="{{ filters.date_from or '' }}">
+                            <span>~</span>
+                            <input type="date" name="date_to" class="form-control form-control-sm" style="font-size: 0.8rem; width: 130px;" value="{{ filters.date_to or '' }}">
+                        </div>
+                    </div>
+                    <div class="col-auto">
+                        <button type="submit" class="btn btn-sm btn-primary">검색</button>
+                        <a href="{{ url_for('admin.stockins_list') }}" class="btn btn-sm btn-outline-secondary">초기화</a>
+                    </div>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Stock In List -->
+<div class="card">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <span>입고 내역 <span class="badge bg-secondary">{{ stockins|length }}건</span></span>
+        <div class="d-flex gap-2">
+            <button type="button" class="btn btn-sm btn-danger" id="deleteSelectedBtn" style="display: none;">선택 삭제</button>
+            {% if stockins|length > 10 %}
+            <button type="button" class="btn btn-sm btn-outline-secondary" id="toggleStockinItems">더보기</button>
+            {% endif %}
+        </div>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table id="stockinsTable" class="table">
+                <thead>
+                    <tr>
+                        <th style="width: 40px;">
+                            <input type="checkbox" class="form-check-input" id="selectAllCheckbox">
+                        </th>
+                        <th>입고일</th>
+                        {% if current_user.is_admin() %}
+                        <th>지사</th>
+                        {% endif %}
+                        <th>입고업체</th>
+                        <th>품목</th>
+                        <th>프랜차이즈</th>
+                        <th class="text-end">수량</th>
+                        <th class="text-end">단가</th>
+                        <th class="text-end">합계</th>
+                        <th>담당자</th>
+                        <th style="width: 80px;"></th>
+                    </tr>
+                </thead>
+                <tbody id="stockinItemsBody">
+                    {% for stockin in stockins %}
+                    <tr class="{% if loop.index > 10 %}stockin-item-hidden d-none{% endif %}">
+                        <td>
+                            <input type="checkbox" class="form-check-input item-checkbox" value="{{ stockin.id }}">
+                        </td>
+                        <td>{{ stockin.stock_date.strftime('%Y-%m-%d') }}</td>
+                        {% if current_user.is_admin() %}
+                        <td>{{ stockin.branch.name if stockin.branch else '-' }}</td>
+                        {% endif %}
+                        <td>{{ stockin.supplier.company_name if stockin.supplier else '-' }}</td>
+                        <td>{{ stockin.product.category }}</td>
+                        <td>{{ stockin.product.franchise.name if stockin.product.franchise else '-' }}</td>
+                        <td class="text-end">{{ '{:,}'.format(stockin.quantity) }}</td>
+                        <td class="text-end">{{ '{:,}'.format(stockin.unit_price) }}원</td>
+                        <td class="text-end">{{ '{:,}'.format(stockin.total_price) }}원</td>
+                        <td>{{ stockin.creator.name if stockin.creator else '-' }}</td>
+                        <td>
+                            <button type="button" class="btn btn-sm btn-outline-secondary" onclick='openEditModal({{ stockin.id }}, {{ stockin.stock_date.strftime("%Y-%m-%d")|tojson }}, {{ (stockin.branch_id or "")|tojson }}, {{ (stockin.supplier_id or "")|tojson }}, {{ stockin.product_id|tojson }}, {{ stockin.quantity }}, {{ stockin.unit_price }}, {{ (stockin.memo or "")|tojson }})'>변경</button>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="{{ 11 if current_user.is_admin() else 10 }}" class="empty-state">
+                            <p>입고 내역이 없습니다.</p>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Stock In Modal -->
+<div class="modal fade" id="stockinModal" tabindex="-1" aria-labelledby="stockinModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="stockinModalLabel">입고 변경</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form id="stockinForm" method="POST">
+                <div class="modal-body">
+                    <div class="row g-3">
+                        <div class="col-md-4">
+                            <label class="form-label">입고일 <span class="required">*</span></label>
+                            <input type="date" name="stock_date" id="modal_stock_date" class="form-control" required>
+                        </div>
+                        {% if current_user.is_admin() %}
+                        <div class="col-md-4">
+                            <label class="form-label">지사</label>
+                            <select name="branch_id" id="modal_branch_id" class="form-select">
+                                <option value="">선택</option>
+                                {% for branch in branches %}
+                                <option value="{{ branch.id }}">{{ branch.name }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">입고업체</label>
+                            <select name="supplier_id" id="modal_supplier_id" class="form-select">
+                                <option value="">선택</option>
+                                {% for supplier in suppliers %}
+                                <option value="{{ supplier.id }}">{{ supplier.company_name }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        {% else %}
+                        <div class="col-md-8">
+                            <label class="form-label">입고업체</label>
+                            <select name="supplier_id" id="modal_supplier_id" class="form-select">
+                                <option value="">선택</option>
+                                {% for supplier in suppliers %}
+                                <option value="{{ supplier.id }}">{{ supplier.company_name }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        {% endif %}
+                        <div class="col-md-6">
+                            <label class="form-label">프랜차이즈 <span class="required">*</span></label>
+                            <select name="product_id" id="modal_product_id" class="form-select" required>
+                                <option value="">선택</option>
+                                {% for product in products %}
+                                <option value="{{ product.id }}" data-price="{{ product.unit_price }}">{{ product.category }} - {{ product.franchise.name if product.franchise else product.name }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">수량 <span class="required">*</span></label>
+                            <input type="number" name="quantity" id="modal_quantity" class="form-control" required min="1">
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">단가 <span class="required">*</span></label>
+                            <div class="input-group">
+                                <input type="text" id="modal_unit_price_display" class="form-control" required>
+                                <input type="hidden" name="unit_price" id="modal_unit_price" value="">
+                                <span class="input-group-text">원</span>
+                            </div>
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label">메모</label>
+                            <input type="text" name="memo" id="modal_memo" class="form-control">
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">취소</button>
+                    <button type="submit" class="btn btn-primary" id="modalSubmitBtn">변경하기</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const today = new Date().toISOString().split('T')[0];
+const isAdmin = {{ 'true' if current_user.is_admin() else 'false' }};
+
+// Format number with commas
+function formatNumber(num) {
+    return num.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+}
+
+// Parse number from formatted string
+function parseFormattedNumber(str) {
+    return parseInt(str.replace(/,/g, '')) || 0;
+}
+
+// Toggle search bar
+const toggleSearchBarBtn = document.getElementById('toggleSearchBar');
+const searchFilters = document.getElementById('searchFilters');
+const toggleSearchIcon = document.getElementById('toggleSearchIcon');
+let searchBarVisible = true;
+
+toggleSearchBarBtn.addEventListener('click', function() {
+    searchBarVisible = !searchBarVisible;
+    searchFilters.style.display = searchBarVisible ? 'block' : 'none';
+    toggleSearchIcon.textContent = searchBarVisible ? '▲' : '▼';
+});
+
+// Toggle stockin items table
+const toggleStockinItemsBtn = document.getElementById('toggleStockinItems');
+if (toggleStockinItemsBtn) {
+    let stockinItemsExpanded = false;
+    toggleStockinItemsBtn.addEventListener('click', function() {
+        const hiddenRows = document.querySelectorAll('.stockin-item-hidden');
+        stockinItemsExpanded = !stockinItemsExpanded;
+        hiddenRows.forEach(row => {
+            row.classList.toggle('d-none', !stockinItemsExpanded);
+        });
+        this.textContent = stockinItemsExpanded ? '접기' : '더보기';
+    });
+}
+
+// Auto-fill unit price when product is selected
+document.getElementById('modal_product_id').addEventListener('change', function() {
+    const selectedOption = this.options[this.selectedIndex];
+    if (selectedOption.dataset.price) {
+        const price = parseInt(selectedOption.dataset.price);
+        document.getElementById('modal_unit_price').value = price;
+        document.getElementById('modal_unit_price_display').value = formatNumber(price);
+    } else {
+        document.getElementById('modal_unit_price').value = '';
+        document.getElementById('modal_unit_price_display').value = '';
+    }
+});
+
+// Handle unit price input formatting
+document.getElementById('modal_unit_price_display').addEventListener('input', function() {
+    const value = this.value.replace(/[^\d]/g, '');
+    if (value) {
+        const numValue = parseInt(value);
+        this.value = formatNumber(numValue);
+        document.getElementById('modal_unit_price').value = numValue;
+    } else {
+        document.getElementById('modal_unit_price').value = '';
+    }
+});
+
+function openEditModal(stockinId, stockDate, branchId, supplierId, productId, quantity, unitPrice, memo) {
+    document.getElementById('stockinModalLabel').textContent = '입고 변경';
+    document.getElementById('modalSubmitBtn').textContent = '변경하기';
+    document.getElementById('stockinForm').action = `/admin/stockins/${stockinId}/edit`;
+
+    // Fill form
+    document.getElementById('modal_stock_date').value = stockDate;
+    if (isAdmin) {
+        document.getElementById('modal_branch_id').value = branchId;
+    }
+    document.getElementById('modal_supplier_id').value = supplierId;
+    document.getElementById('modal_product_id').value = productId;
+    document.getElementById('modal_quantity').value = quantity;
+    document.getElementById('modal_unit_price').value = unitPrice;
+    document.getElementById('modal_unit_price_display').value = formatNumber(unitPrice);
+    document.getElementById('modal_memo').value = memo;
+
+    // Show modal
+    const modal = new bootstrap.Modal(document.getElementById('stockinModal'));
+    modal.show();
+}
+
+// Select all checkbox functionality
+const selectAllCheckbox = document.getElementById('selectAllCheckbox');
+const itemCheckboxes = document.querySelectorAll('.item-checkbox');
+const deleteSelectedBtn = document.getElementById('deleteSelectedBtn');
+
+function updateDeleteButtonVisibility() {
+    const checkedBoxes = document.querySelectorAll('.item-checkbox:checked');
+    deleteSelectedBtn.style.display = checkedBoxes.length > 0 ? 'block' : 'none';
+}
+
+selectAllCheckbox.addEventListener('change', function() {
+    itemCheckboxes.forEach(checkbox => {
+        checkbox.checked = this.checked;
+    });
+    updateDeleteButtonVisibility();
+});
+
+itemCheckboxes.forEach(checkbox => {
+    checkbox.addEventListener('change', function() {
+        const allChecked = Array.from(itemCheckboxes).every(cb => cb.checked);
+        const someChecked = Array.from(itemCheckboxes).some(cb => cb.checked);
+        selectAllCheckbox.checked = allChecked;
+        selectAllCheckbox.indeterminate = someChecked && !allChecked;
+        updateDeleteButtonVisibility();
+    });
+});
+
+// Delete selected items
+deleteSelectedBtn.addEventListener('click', function() {
+    const checkedBoxes = document.querySelectorAll('.item-checkbox:checked');
+    const itemIds = Array.from(checkedBoxes).map(cb => cb.value);
+
+    if (itemIds.length === 0) {
+        alert('삭제할 항목을 선택해주세요.');
+        return;
+    }
+
+    if (!confirm(`선택한 ${itemIds.length}개의 항목을 삭제하시겠습니까?`)) {
+        return;
+    }
+
+    // Send delete request
+    fetch('{{ url_for("admin.stockins_delete") }}', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ item_ids: itemIds })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert(data.message || '삭제되었습니다.');
+            location.reload();
+        } else {
+            alert(data.message || '삭제 중 오류가 발생했습니다.');
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('삭제 중 오류가 발생했습니다.');
+    });
+});
+</script>
+{% endblock %}

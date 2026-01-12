@@ -1,0 +1,303 @@
+{% extends "base.html" %}
+{% block title %}매장 - 태경바이오 ERP{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h2>매장</h2>
+    <div class="d-flex gap-2 align-items-center">
+        <div class="export-buttons no-print">
+            <button class="btn btn-success btn-sm export-btn" onclick="exportTableToExcel('storesTable', '매장목록')">
+                <i class="bi bi-file-earmark-excel"></i> Excel
+            </button>
+            <button class="btn btn-danger btn-sm export-btn" onclick="exportTableToPDF('storesTable', '매장목록')">
+                <i class="bi bi-file-earmark-pdf"></i> PDF
+            </button>
+            <button class="btn btn-secondary btn-sm export-btn" onclick="printTable()">
+                <i class="bi bi-printer"></i> 인쇄
+            </button>
+        </div>
+        <select class="form-select form-select-sm" style="width: auto;" onchange="sortTable(this.value)">
+            <option value="id-asc" {% if sort == 'id' and order == 'asc' %}selected{% endif %}>ID ↑</option>
+            <option value="id-desc" {% if sort == 'id' and order == 'desc' %}selected{% endif %}>ID ↓</option>
+            <option value="name-asc" {% if sort == 'name' and order == 'asc' %}selected{% endif %}>매장명 ↑</option>
+            <option value="name-desc" {% if sort == 'name' and order == 'desc' %}selected{% endif %}>매장명 ↓</option>
+            <option value="franchise-asc" {% if sort == 'franchise' and order == 'asc' %}selected{% endif %}>프랜차이즈 ↑</option>
+            <option value="franchise-desc" {% if sort == 'franchise' and order == 'desc' %}selected{% endif %}>프랜차이즈 ↓</option>
+            <option value="created_at-desc" {% if sort == 'created_at' and order == 'desc' %}selected{% endif %}>최신순</option>
+            <option value="created_at-asc" {% if sort == 'created_at' and order == 'asc' %}selected{% endif %}>오래된순</option>
+        </select>
+        <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#storeModal" onclick="openAddModal()">등록하기</button>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table id="storesTable" class="table">
+                <thead>
+                    <tr>
+                        <th style="width: 60px;">ID</th>
+                        <th>프랜차이즈</th>
+                        <th>매장명</th>
+                        <th>관리 지사</th>
+                        <th>담당 중상</th>
+                        <th class="text-center" style="width: 60px;">2달출고x</th>
+                        <th class="text-center" style="width: 60px;">미사용</th>
+                        <th class="text-center" style="width: 60px;">폐유미수거</th>
+                        <th class="text-center" style="width: 50px;">폐업</th>
+                        <th style="width: 80px;"></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for store in stores %}
+                    <tr>
+                        <td class="id-cell">{{ store.id }}</td>
+                        <td>{{ store.franchise.name if store.franchise else '-' }}</td>
+                        <td><a href="#" class="text-decoration-none" onclick='openDetailModal({{ (store.franchise.name if store.franchise else "-")|tojson }}, {{ store.name|tojson }}, {{ (store.branch.name if store.branch else "-")|tojson }}, {{ (store.jungsung.business_name if store.jungsung else "-")|tojson }}, {{ (store.owner_name if store.owner_name else "-")|tojson }}, {{ (store.owner_phone or "-")|tojson }}, {{ (store.address if store.address else "-")|tojson }}); return false;'>{{ store.name }}</a></td>
+                        <td>{{ store.branch.name if store.branch else '-' }}</td>
+                        <td>{{ store.jungsung.business_name if store.jungsung else '-' }}</td>
+                        <td class="text-center">
+                            {% if store.no_shipment_2months %}<span class="status-marker status-danger"></span>{% endif %}
+                        </td>
+                        <td class="text-center">
+                            {% if store.unused_store %}<span class="status-marker status-danger"></span>{% endif %}
+                        </td>
+                        <td class="text-center">
+                            {% if store.uncollected_waste_oil %}<span class="status-marker status-danger"></span>{% endif %}
+                        </td>
+                        <td class="text-center">
+                            {% if store.closed_store %}<span class="status-marker status-danger"></span>{% endif %}
+                        </td>
+                        <td>
+                            <div class="d-flex gap-1">
+                                <button type="button" class="btn btn-sm btn-outline-secondary" title="변경" onclick='openEditModal({{ store.id }}, {{ (store.franchise_id or "")|tojson }}, {{ store.name|tojson }}, {{ (store.branch_id or "")|tojson }}, {{ (store.jungsung_id or "")|tojson }}, {{ (store.owner_name or "")|tojson }}, {{ (store.owner_phone or "")|tojson }}, {{ (store.address or "")|tojson }})'>
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" viewBox="0 0 16 16"><path d="M12.146.146a.5.5 0 0 1 .708 0l3 3a.5.5 0 0 1 0 .708l-10 10a.5.5 0 0 1-.168.11l-5 2a.5.5 0 0 1-.65-.65l2-5a.5.5 0 0 1 .11-.168l10-10zM11.207 2.5 13.5 4.793 14.793 3.5 12.5 1.207 11.207 2.5zm1.586 3L10.5 3.207 4 9.707V10h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.5h.293l6.5-6.5zm-9.761 5.175-.106.106-1.528 3.821 3.821-1.528.106-.106A.5.5 0 0 1 5 12.5V12h-.5a.5.5 0 0 1-.5-.5V11h-.5a.5.5 0 0 1-.468-.325z"/></svg>
+                                </button>
+                                <form method="POST" action="{{ url_for('admin.stores_delete', id=store.id) }}" style="display: inline;" onsubmit="return confirm('정말 삭제하시겠습니까?')">
+                                    <button type="submit" class="btn btn-sm btn-outline-danger" title="삭제">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" viewBox="0 0 16 16"><path d="M5.5 5.5A.5.5 0 0 1 6 6v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm2.5 0a.5.5 0 0 1 .5.5v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm3 .5a.5.5 0 0 0-1 0v6a.5.5 0 0 0 1 0V6z"/><path fill-rule="evenodd" d="M14.5 3a1 1 0 0 1-1 1H13v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V4h-.5a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1H6a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1h3.5a1 1 0 0 1 1 1v1zM4.118 4 4 4.059V13a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1V4.059L11.882 4H4.118zM2.5 3V2h11v1h-11z"/></svg>
+                                    </button>
+                                </form>
+                            </div>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="10" class="empty-state">
+                            <p>등록된 매장이 없습니다.</p>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Store Modal -->
+<div class="modal fade" id="storeModal" tabindex="-1" aria-labelledby="storeModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="storeModalLabel">매장 등록</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form id="storeForm" method="POST">
+                <div class="modal-body">
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label">프랜차이즈 <span class="required">*</span></label>
+                            <select name="franchise_id" id="modal_franchise_id" class="form-select" required>
+                                <option value="">선택</option>
+                                {% for franchise in franchises %}
+                                <option value="{{ franchise.id }}">{{ franchise.name }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">매장명 <span class="required">*</span></label>
+                            <input type="text" name="name" id="modal_name" class="form-control" required>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">관리 지사</label>
+                            <select name="branch_id" id="modal_branch_id" class="form-select">
+                                <option value="">선택</option>
+                                {% for branch in branches %}
+                                <option value="{{ branch.id }}">{{ branch.name }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">관리 중상</label>
+                            <select name="jungsung_id" id="modal_jungsung_id" class="form-select">
+                                <option value="">선택</option>
+                                {% for jungsung in jungsungs %}
+                                <option value="{{ jungsung.id }}" data-branch="{{ jungsung.branch_id }}">{{ jungsung.business_name }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">점주명</label>
+                            <input type="text" name="owner_name" id="modal_owner_name" class="form-control">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">점주연락처</label>
+                            <input type="text" name="owner_phone" id="modal_owner_phone" class="form-control phone-input" placeholder="010-1234-5678" maxlength="13">
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label">주소</label>
+                            <input type="text" name="address" id="modal_address" class="form-control">
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">취소</button>
+                    <button type="submit" class="btn btn-primary" id="modalSubmitBtn">등록하기</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Detail Modal -->
+<div class="modal fade" id="detailModal" tabindex="-1" aria-labelledby="detailModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="detailModalLabel">매장 상세</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="row mb-2">
+                    <div class="col-4"><span class="detail-label">프랜차이즈</span></div>
+                    <div class="col-8"><span class="detail-value" id="detail_franchise"></span></div>
+                </div>
+                <div class="row mb-2">
+                    <div class="col-4"><span class="detail-label">매장명</span></div>
+                    <div class="col-8"><span class="detail-value" id="detail_name"></span></div>
+                </div>
+                <div class="row mb-2">
+                    <div class="col-4"><span class="detail-label">관리 지사</span></div>
+                    <div class="col-8"><span class="detail-value" id="detail_branch"></span></div>
+                </div>
+                <div class="row mb-2">
+                    <div class="col-4"><span class="detail-label">담당 중상</span></div>
+                    <div class="col-8"><span class="detail-value" id="detail_jungsung"></span></div>
+                </div>
+                <div class="row mb-2">
+                    <div class="col-4"><span class="detail-label">점주명</span></div>
+                    <div class="col-8"><span class="detail-value" id="detail_owner_name"></span></div>
+                </div>
+                <div class="row mb-2">
+                    <div class="col-4"><span class="detail-label">점주연락처</span></div>
+                    <div class="col-8"><span class="detail-value" id="detail_owner_phone"></span></div>
+                </div>
+                <div class="row">
+                    <div class="col-4"><span class="detail-label">주소</span></div>
+                    <div class="col-8"><span class="detail-value" id="detail_address"></span></div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">닫기</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const addUrl = "{{ url_for('admin.stores_add_inline') }}";
+
+function sortTable(value) {
+    const [sort, order] = value.split('-');
+    window.location.href = `{{ url_for('admin.stores_list') }}?sort=${sort}&order=${order}`;
+}
+
+function openDetailModal(franchise, name, branch, jungsung, ownerName, ownerPhone, address) {
+    document.getElementById('detail_franchise').textContent = franchise;
+    document.getElementById('detail_name').textContent = name;
+    document.getElementById('detail_branch').textContent = branch;
+    document.getElementById('detail_jungsung').textContent = jungsung;
+    document.getElementById('detail_owner_name').textContent = ownerName;
+    document.getElementById('detail_owner_phone').textContent = ownerPhone;
+    document.getElementById('detail_address').textContent = address;
+
+    const modal = new bootstrap.Modal(document.getElementById('detailModal'));
+    modal.show();
+}
+
+function openAddModal() {
+    document.getElementById('storeModalLabel').textContent = '매장 등록';
+    document.getElementById('modalSubmitBtn').textContent = '등록하기';
+    document.getElementById('storeForm').action = addUrl;
+
+    // Clear form
+    document.getElementById('modal_franchise_id').value = '';
+    document.getElementById('modal_name').value = '';
+    document.getElementById('modal_branch_id').value = '';
+    document.getElementById('modal_jungsung_id').value = '';
+    document.getElementById('modal_owner_name').value = '';
+    document.getElementById('modal_owner_phone').value = '';
+    document.getElementById('modal_address').value = '';
+}
+
+function openEditModal(storeId, franchiseId, name, branchId, jungsungId, ownerName, ownerPhone, address) {
+    document.getElementById('storeModalLabel').textContent = '매장 변경';
+    document.getElementById('modalSubmitBtn').textContent = '변경하기';
+    document.getElementById('storeForm').action = `/admin/stores/${storeId}/edit-inline`;
+
+    // Fill form
+    document.getElementById('modal_franchise_id').value = franchiseId;
+    document.getElementById('modal_name').value = name;
+    document.getElementById('modal_branch_id').value = branchId;
+    document.getElementById('modal_jungsung_id').value = jungsungId;
+    document.getElementById('modal_owner_name').value = ownerName;
+    document.getElementById('modal_owner_phone').value = ownerPhone;
+    document.getElementById('modal_address').value = address;
+
+    // Show modal
+    const modal = new bootstrap.Modal(document.getElementById('storeModal'));
+    modal.show();
+}
+
+// Filter jungsung options based on selected branch
+document.getElementById('modal_branch_id').addEventListener('change', function() {
+    const branchId = this.value;
+    const jungsungSelect = document.getElementById('modal_jungsung_id');
+    const options = jungsungSelect.querySelectorAll('option');
+
+    options.forEach(option => {
+        if (option.value === '') {
+            option.style.display = '';
+        } else if (branchId === '' || option.dataset.branch === branchId) {
+            option.style.display = '';
+        } else {
+            option.style.display = 'none';
+        }
+    });
+
+    // Reset jungsung selection if current selection doesn't match branch
+    const selectedOption = jungsungSelect.options[jungsungSelect.selectedIndex];
+    if (selectedOption && selectedOption.dataset.branch && selectedOption.dataset.branch !== branchId) {
+        jungsungSelect.value = '';
+    }
+});
+
+// Auto-format phone number with hyphens
+document.querySelectorAll('.phone-input').forEach(function(input) {
+    input.addEventListener('input', function(e) {
+        let value = e.target.value.replace(/\D/g, '');
+        if (value.length > 11) value = value.slice(0, 11);
+
+        if (value.length <= 3) {
+            e.target.value = value;
+        } else if (value.length <= 7) {
+            e.target.value = value.slice(0, 3) + '-' + value.slice(3);
+        } else {
+            e.target.value = value.slice(0, 3) + '-' + value.slice(3, 7) + '-' + value.slice(7);
+        }
+    });
+});
+</script>
+{% endblock %}

@@ -1,0 +1,13 @@
+{% macro export_buttons(table_id, filename) %}
+<div class="export-buttons no-print">
+    <button class="btn btn-success btn-sm export-btn" onclick="exportTableToExcel('{{ table_id }}', '{{ filename }}')">
+        <i class="bi bi-file-earmark-excel"></i> Excel
+    </button>
+    <button class="btn btn-danger btn-sm export-btn" onclick="exportTableToPDF('{{ table_id }}', '{{ filename }}')">
+        <i class="bi bi-file-earmark-pdf"></i> PDF
+    </button>
+    <button class="btn btn-secondary btn-sm export-btn" onclick="printTable()">
+        <i class="bi bi-printer"></i> 인쇄
+    </button>
+</div>
+{% endmacro %}

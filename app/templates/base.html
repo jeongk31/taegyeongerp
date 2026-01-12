@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}태경바이오 ERP{% endblock %}</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
+    <link href="{{ url_for('static', filename='css/style.css') }}" rel="stylesheet">
+    <!-- Export Libraries CSS -->
+    <style>
+        .export-buttons {
+            display: inline-flex;
+            gap: 0.5rem;
+        }
+        .export-btn {
+            padding: 0.25rem 0.75rem;
+            font-size: 0.875rem;
+        }
+        @media print {
+            .no-print {
+                display: none !important;
+            }
+        }
+    </style>
+    {% block extra_css %}{% endblock %}
+</head>
+<body>
+    {% if current_user.is_authenticated %}
+    <nav class="navbar navbar-expand-lg navbar-dark">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="{{ url_for('dashboard.index') }}">태경바이오 ERP</a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav me-auto">
+                    {% if current_user.is_admin() %}
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ url_for('dashboard.admin') }}">대시보드</a>
+                    </li>
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle" href="#" data-bs-toggle="dropdown">등록관리</a>
+                        <ul class="dropdown-menu">
+                            <li><a class="dropdown-item" href="{{ url_for('admin.branches_list') }}">지사</a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('admin.jungsungs_list') }}">담당중상</a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('admin.suppliers_list') }}">제품입고업체</a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('admin.categories_list') }}">품목</a></li>
+                            <li><hr class="dropdown-divider"></li>
+                            <li><a class="dropdown-item" href="{{ url_for('admin.franchises_list') }}">프랜차이즈</a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('admin.products_list') }}">제품</a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('admin.stores_list') }}">매장</a></li>
+                        </ul>
+                    </li>
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle" href="#" data-bs-toggle="dropdown">입출고관리</a>
+                        <ul class="dropdown-menu">
+                            <li><a class="dropdown-item" href="{{ url_for('admin.stockins_list') }}">입고</a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('admin.shipments_list') }}">출고</a></li>
+                        </ul>
+                    </li>
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle" href="#" data-bs-toggle="dropdown">재고현황</a>
+                        <ul class="dropdown-menu">
+                            <li><a class="dropdown-item" href="{{ url_for('admin.inventory_status') }}">재고현황</a></li>
+                            <li><hr class="dropdown-divider"></li>
+                            <li><a class="dropdown-item" href="{{ url_for('admin.receivables') }}">미수금 관리</a></li>
+                        </ul>
+                    </li>
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle" href="#" data-bs-toggle="dropdown">ERP 등록수량 체크</a>
+                        <ul class="dropdown-menu">
+                            <li><a class="dropdown-item" href="{{ url_for('admin.erp_tracking_admin', search_type='weekly') }}">주별 검색</a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('admin.erp_tracking_admin', search_type='monthly') }}">월별 검색</a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('admin.erp_tracking_admin', search_type='period') }}">기간 검색</a></li>
+                        </ul>
+                    </li>
+                    {% elif current_user.is_branch() %}
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ url_for('dashboard.branch') }}">대시보드</a>
+                    </li>
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle" href="#" data-bs-toggle="dropdown">등록관리</a>
+                        <ul class="dropdown-menu">
+                            <li><a class="dropdown-item" href="{{ url_for('admin.jungsungs_list') }}">담당중상</a></li>
+                            <li><hr class="dropdown-divider"></li>
+                            <li><a class="dropdown-item" href="{{ url_for('admin.franchises_list') }}">프랜차이즈</a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('admin.products_list') }}">제품</a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('admin.stores_list') }}">매장</a></li>
+                        </ul>
+                    </li>
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle" href="#" data-bs-toggle="dropdown">입출고관리</a>
+                        <ul class="dropdown-menu">
+                            <li><a class="dropdown-item" href="{{ url_for('admin.stockins_list') }}">입고</a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('admin.shipments_list') }}">출고</a></li>
+                        </ul>
+                    </li>
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle" href="#" data-bs-toggle="dropdown">재고현황</a>
+                        <ul class="dropdown-menu">
+                            <li><a class="dropdown-item" href="{{ url_for('admin.inventory_status') }}">재고현황</a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('admin.daily_shipments') }}">날짜별 출고 검색</a></li>
+                            <li><hr class="dropdown-divider"></li>
+                            <li><a class="dropdown-item" href="{{ url_for('admin.receivables') }}">미수금 관리</a></li>
+                        </ul>
+                    </li>
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle" href="#" data-bs-toggle="dropdown">ERP 등록수량 체크</a>
+                        <ul class="dropdown-menu">
+                            <li><a class="dropdown-item" href="{{ url_for('admin.erp_tracking_admin', search_type='weekly') }}">주별 검색</a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('admin.erp_tracking_admin', search_type='monthly') }}">월별 검색</a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('admin.erp_tracking_admin', search_type='period') }}">기간 검색</a></li>
+                        </ul>
+                    </li>
+                    {% elif current_user.is_driver() %}
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ url_for('dashboard.driver') }}">대시보드</a>
+                    </li>
+                    {% elif current_user.is_franchise() %}
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ url_for('dashboard.franchise') }}">대시보드</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ url_for('admin.complaint_stores') }}">컴플레인 매장관리</a>
+                    </li>
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle" href="#" data-bs-toggle="dropdown">ERP 등록수량 체크</a>
+                        <ul class="dropdown-menu">
+                            <li><a class="dropdown-item" href="{{ url_for('admin.erp_tracking_franchise', search_type='weekly') }}">주별 검색</a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('admin.erp_tracking_franchise', search_type='monthly') }}">월별 검색</a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('admin.erp_tracking_franchise', search_type='period') }}">기간 검색</a></li>
+                        </ul>
+                    </li>
+                    {% elif current_user.is_jungsung() %}
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ url_for('dashboard.jungsung') }}">대시보드</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ url_for('admin.erp_registration') }}">ERP등록</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ url_for('admin.erp_tracking_jungsung') }}">ERP등록체크</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ url_for('admin.store_status_list') }}">매장상태관리</a>
+                    </li>
+                    {% endif %}
+                </ul>
+                <ul class="navbar-nav">
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle" href="#" data-bs-toggle="dropdown">
+                            {{ current_user.name or current_user.username }}
+                            <span class="badge bg-light text-dark ms-1">{{ current_user.get_role_display() }}</span>
+                        </a>
+                        <ul class="dropdown-menu dropdown-menu-end">
+                            <li><a class="dropdown-item" href="{{ url_for('auth.profile') }}">내 정보</a></li>
+                            <li><hr class="dropdown-divider"></li>
+                            <li><a class="dropdown-item" href="{{ url_for('auth.logout') }}">로그아웃</a></li>
+                        </ul>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+    {% endif %}
+
+    <main class="{% if current_user.is_authenticated %}py-4{% endif %}">
+        <div class="container-fluid px-4">
+            {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
+                    {% for category, message in messages %}
+                        <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+                            {{ message }}
+                            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                        </div>
+                    {% endfor %}
+                {% endif %}
+            {% endwith %}
+
+            {% block content %}{% endblock %}
+        </div>
+    </main>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+
+    <!-- Export Libraries -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+
+    <!-- Universal Export Functions -->
+    <script>
+        function rgbToHex(rgb) {
+            if (!rgb || rgb === 'rgba(0, 0, 0, 0)' || rgb === 'transparent') return null;
+            const match = rgb.match(/^rgba?\((\d+),\s*(\d+),\s*(\d+)/);
+            if (!match) return null;
+            return ((1 << 24) + (parseInt(match[1]) << 16) + (parseInt(match[2]) << 8) + parseInt(match[3])).toString(16).slice(1).toUpperCase();
+        }
+
+        function exportTableToExcel(tableId, filename = 'export') {
+            const table = document.getElementById(tableId);
+            if (!table) {
+                alert('테이블을 찾을 수 없습니다.');
+                return;
+            }
+
+            // Clone table and remove no-print elements
+            const clonedTable = table.cloneNode(true);
+            clonedTable.querySelectorAll('.no-print').forEach(el => el.remove());
+
+            // Convert table to worksheet with basic structure
+            const ws = XLSX.utils.table_to_sheet(clonedTable);
+
+            // Get all cells in the original table
+            const allCells = table.querySelectorAll('th, td');
+            const range = XLSX.utils.decode_range(ws['!ref']);
+
+            // Apply styles to each cell
+            let cellIndex = 0;
+            for (let R = range.s.r; R <= range.e.r; R++) {
+                for (let C = range.s.c; C <= range.e.c; C++) {
+                    const cellAddress = XLSX.utils.encode_cell({r: R, c: C});
+                    if (!ws[cellAddress]) continue;
+
+                    const originalCell = allCells[cellIndex];
+                    if (originalCell) {
+                        const computedStyle = window.getComputedStyle(originalCell);
+                        const bgColor = rgbToHex(computedStyle.backgroundColor);
+                        const textColor = rgbToHex(computedStyle.color);
+                        const fontWeight = computedStyle.fontWeight;
+                        const fontSize = parseInt(computedStyle.fontSize);
+
+                        // Initialize cell style
+                        if (!ws[cellAddress].s) ws[cellAddress].s = {};
+
+                        // Apply background color
+                        if (bgColor && bgColor !== 'FFFFFF') {
+                            ws[cellAddress].s.fill = {
+                                fgColor: { rgb: bgColor }
+                            };
+                        }
+
+                        // Apply text color
+                        if (textColor && textColor !== '000000') {
+                            if (!ws[cellAddress].s.font) ws[cellAddress].s.font = {};
+                            ws[cellAddress].s.font.color = { rgb: textColor };
+                        }
+
+                        // Apply bold
+                        if (fontWeight >= 600) {
+                            if (!ws[cellAddress].s.font) ws[cellAddress].s.font = {};
+                            ws[cellAddress].s.font.bold = true;
+                        }
+
+                        // Apply font size
+                        if (fontSize) {
+                            if (!ws[cellAddress].s.font) ws[cellAddress].s.font = {};
+                            ws[cellAddress].s.font.sz = fontSize * 0.75; // Convert px to pt
+                        }
+
+                        // Apply borders
+                        ws[cellAddress].s.border = {
+                            top: { style: 'thin', color: { rgb: 'CCCCCC' } },
+                            bottom: { style: 'thin', color: { rgb: 'CCCCCC' } },
+                            left: { style: 'thin', color: { rgb: 'CCCCCC' } },
+                            right: { style: 'thin', color: { rgb: 'CCCCCC' } }
+                        };
+
+                        // Apply alignment
+                        const textAlign = computedStyle.textAlign;
+                        if (textAlign === 'right' || textAlign === 'center') {
+                            ws[cellAddress].s.alignment = { horizontal: textAlign };
+                        }
+                    }
+                    cellIndex++;
+                }
+            }
+
+            // Set column widths based on actual column widths
+            const cols = [];
+            const headerRow = table.querySelector('tr');
+            if (headerRow) {
+                const cells = headerRow.querySelectorAll('th, td');
+                cells.forEach(cell => {
+                    const width = cell.offsetWidth;
+                    cols.push({ wch: Math.max(10, Math.floor(width / 8)) });
+                });
+            }
+            ws['!cols'] = cols;
+
+            // Create workbook and add worksheet
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, "Sheet1");
+
+            // Write file with cell styles
+            XLSX.writeFile(wb, `${filename}_${new Date().toISOString().split('T')[0]}.xlsx`, {
+                cellStyles: true,
+                bookType: 'xlsx'
+            });
+        }
+
+        function exportTableToPDF(tableId, filename = 'export', orientation = 'landscape') {
+            const { jsPDF } = window.jspdf;
+            const element = document.getElementById(tableId);
+            if (!element) {
+                alert('테이블을 찾을 수 없습니다.');
+                return;
+            }
+
+            // Show loading
+            const button = event?.target?.closest('button');
+            const originalHTML = button?.innerHTML;
+            if (button) {
+                button.disabled = true;
+                button.innerHTML = '<span class="spinner-border spinner-border-sm"></span> 생성중...';
+            }
+
+            // Use html2canvas to capture the table as an image (supports Korean text and all styling)
+            html2canvas(element, {
+                scale: 3, // Higher scale for better quality
+                logging: false,
+                useCORS: true,
+                allowTaint: true,
+                backgroundColor: '#ffffff',
+                windowWidth: element.scrollWidth,
+                windowHeight: element.scrollHeight,
+                onclone: function(clonedDoc) {
+                    // Ensure all styles are applied in the cloned document
+                    const clonedElement = clonedDoc.getElementById(tableId);
+                    if (clonedElement) {
+                        clonedElement.style.display = 'table';
+                        clonedElement.style.width = 'auto';
+                    }
+                }
+            }).then(canvas => {
+                const imgData = canvas.toDataURL('image/png', 1.0); // Max quality
+                const pdf = new jsPDF(orientation, 'mm', 'a4');
+
+                const pageWidth = pdf.internal.pageSize.getWidth();
+                const pageHeight = pdf.internal.pageSize.getHeight();
+                const imgWidth = pageWidth - 20;
+                const imgHeight = (canvas.height * imgWidth) / canvas.width;
+
+                let heightLeft = imgHeight;
+                let position = 10;
+
+                // Add first page
+                pdf.addImage(imgData, 'PNG', 10, position, imgWidth, imgHeight);
+                heightLeft -= (pageHeight - 20);
+
+                // Add more pages if needed
+                while (heightLeft > 0) {
+                    position = -(pageHeight - 20) + 10;
+                    pdf.addPage();
+                    pdf.addImage(imgData, 'PNG', 10, position, imgWidth, imgHeight);
+                    heightLeft -= (pageHeight - 20);
+                }
+
+                pdf.save(`${filename}_${new Date().toISOString().split('T')[0]}.pdf`);
+
+                // Restore button
+                if (button) {
+                    button.disabled = false;
+                    button.innerHTML = originalHTML;
+                }
+            }).catch(error => {
+                console.error('PDF 생성 오류:', error);
+                alert('PDF 생성 중 오류가 발생했습니다.');
+                if (button) {
+                    button.disabled = false;
+                    button.innerHTML = originalHTML;
+                }
+            });
+        }
+
+        function printTable() {
+            window.print();
+        }
+    </script>
+
+    {% block extra_js %}{% endblock %}
+</body>
+</html>

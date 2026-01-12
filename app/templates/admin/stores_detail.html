@@ -1,0 +1,150 @@
+{% extends "base.html" %}
+{% block title %}{{ store.name }} - 태경바이오 ERP{% endblock %}
+
+{% block content %}
+<a href="{{ url_for('admin.franchises_list') }}" class="back-link">
+    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" viewBox="0 0 16 16" class="me-1">
+        <path fill-rule="evenodd" d="M15 8a.5.5 0 0 0-.5-.5H2.707l3.147-3.146a.5.5 0 1 0-.708-.708l-4 4a.5.5 0 0 0 0 .708l4 4a.5.5 0 0 0 .708-.708L2.707 8.5H14.5A.5.5 0 0 0 15 8z"/>
+    </svg>
+    목록으로
+</a>
+
+<div class="page-header">
+    <h2>{{ store.name }}</h2>
+    <a href="{{ url_for('admin.franchises_list', edit=store.id) }}" class="btn btn-primary">변경</a>
+</div>
+
+<div class="row">
+    <div class="col-md-6">
+        <div class="card mb-4">
+            <div class="card-header">기본 정보</div>
+            <div class="card-body">
+                <div class="row mb-3">
+                    <div class="col-4">
+                        <div class="detail-label">프랜차이즈</div>
+                    </div>
+                    <div class="col-8">
+                        <div class="detail-value">{{ store.franchise.name }}</div>
+                    </div>
+                </div>
+                <div class="row mb-3">
+                    <div class="col-4">
+                        <div class="detail-label">매장명</div>
+                    </div>
+                    <div class="col-8">
+                        <div class="detail-value">{{ store.name }}</div>
+                    </div>
+                </div>
+                <div class="row mb-3">
+                    <div class="col-4">
+                        <div class="detail-label">관리 지사</div>
+                    </div>
+                    <div class="col-8">
+                        <div class="detail-value">{{ store.branch.name if store.branch else '-' }}</div>
+                    </div>
+                </div>
+                <div class="row mb-3">
+                    <div class="col-4">
+                        <div class="detail-label">담당 중상</div>
+                    </div>
+                    <div class="col-8">
+                        <div class="detail-value">{{ store.jungsung.business_name if store.jungsung else '-' }}</div>
+                    </div>
+                </div>
+                <div class="row mb-3">
+                    <div class="col-4">
+                        <div class="detail-label">점주명</div>
+                    </div>
+                    <div class="col-8">
+                        <div class="detail-value">{{ store.owner_name or '-' }}</div>
+                    </div>
+                </div>
+                <div class="row mb-3">
+                    <div class="col-4">
+                        <div class="detail-label">점주연락처</div>
+                    </div>
+                    <div class="col-8">
+                        <div class="detail-value">{{ store.owner_phone or '-' }}</div>
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="col-4">
+                        <div class="detail-label">주소</div>
+                    </div>
+                    <div class="col-8">
+                        <div class="detail-value">{{ store.address or '-' }}</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card mb-4">
+            <div class="card-header">매장 상태</div>
+            <div class="card-body">
+                <div class="row mb-3">
+                    <div class="col-6">
+                        <div class="detail-label">2달 이상 출고x</div>
+                    </div>
+                    <div class="col-6">
+                        {% if store.no_shipment_2months %}
+                        <span class="status-marker status-danger"></span>
+                        {% endif %}
+                    </div>
+                </div>
+                <div class="row mb-3">
+                    <div class="col-6">
+                        <div class="detail-label">미사용매장</div>
+                    </div>
+                    <div class="col-6">
+                        {% if store.unused_store %}
+                        <span class="status-marker status-danger"></span>
+                        {% endif %}
+                    </div>
+                </div>
+                <div class="row mb-3">
+                    <div class="col-6">
+                        <div class="detail-label">폐유미수거</div>
+                    </div>
+                    <div class="col-6">
+                        {% if store.uncollected_waste_oil %}
+                        <span class="status-marker status-danger"></span>
+                        {% endif %}
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="col-6">
+                        <div class="detail-label">폐업매장</div>
+                    </div>
+                    <div class="col-6">
+                        {% if store.closed_store %}
+                        <span class="status-marker status-danger"></span>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="card">
+            <div class="card-header">등록 정보</div>
+            <div class="card-body">
+                <div class="row mb-3">
+                    <div class="col-4">
+                        <div class="detail-label">등록일</div>
+                    </div>
+                    <div class="col-8">
+                        <div class="detail-value">{{ store.created_at.strftime('%Y-%m-%d %H:%M') }}</div>
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="col-4">
+                        <div class="detail-label">수정일</div>
+                    </div>
+                    <div class="col-8">
+                        <div class="detail-value">{{ store.updated_at.strftime('%Y-%m-%d %H:%M') if store.updated_at else '-' }}</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

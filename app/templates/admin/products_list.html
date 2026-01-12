@@ -1,0 +1,162 @@
+{% extends "base.html" %}
+{% block title %}제품 - 태경바이오 ERP{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h2>제품</h2>
+    <div class="d-flex gap-2 align-items-center">
+        <div class="export-buttons no-print">
+            <button class="btn btn-success btn-sm export-btn" onclick="exportTableToExcel('productsTable', '제품목록')">
+                <i class="bi bi-file-earmark-excel"></i> Excel
+            </button>
+            <button class="btn btn-danger btn-sm export-btn" onclick="exportTableToPDF('productsTable', '제품목록')">
+                <i class="bi bi-file-earmark-pdf"></i> PDF
+            </button>
+            <button class="btn btn-secondary btn-sm export-btn" onclick="printTable()">
+                <i class="bi bi-printer"></i> 인쇄
+            </button>
+        </div>
+        <select class="form-select form-select-sm" style="width: auto;" onchange="sortTable(this.value)">
+            <option value="id-asc" {% if sort == 'id' and order == 'asc' %}selected{% endif %}>ID ↑</option>
+            <option value="id-desc" {% if sort == 'id' and order == 'desc' %}selected{% endif %}>ID ↓</option>
+            <option value="franchise-asc" {% if sort == 'franchise' and order == 'asc' %}selected{% endif %}>프랜차이즈 ↑</option>
+            <option value="franchise-desc" {% if sort == 'franchise' and order == 'desc' %}selected{% endif %}>프랜차이즈 ↓</option>
+            <option value="category-asc" {% if sort == 'category' and order == 'asc' %}selected{% endif %}>품목 ↑</option>
+            <option value="category-desc" {% if sort == 'category' and order == 'desc' %}selected{% endif %}>품목 ↓</option>
+            <option value="created_at-desc" {% if sort == 'created_at' and order == 'desc' %}selected{% endif %}>최신순</option>
+            <option value="created_at-asc" {% if sort == 'created_at' and order == 'asc' %}selected{% endif %}>오래된순</option>
+        </select>
+        <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#productModal" onclick="openAddModal()">등록하기</button>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table id="productsTable" class="table">
+                <thead>
+                    <tr>
+                        <th style="width: 60px;">ID</th>
+                        <th>품목</th>
+                        <th>프랜차이즈</th>
+                        <th>단가</th>
+                        <th>등록일</th>
+                        <th style="width: 80px;"></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for product in products %}
+                    <tr>
+                        <td class="id-cell">{{ product.id }}</td>
+                        <td>{{ product.category }}</td>
+                        <td>{{ product.franchise.name if product.franchise else '-' }}</td>
+                        <td>{{ '{:,}'.format(product.unit_price) }}원</td>
+                        <td>{{ product.created_at.strftime('%Y-%m-%d') }}</td>
+                        <td>
+                            <div class="d-flex gap-1">
+                                <button type="button" class="btn btn-sm btn-outline-secondary" title="변경" onclick='openEditModal({{ product.id }}, {{ product.category|tojson }}, {{ (product.franchise_id or "")|tojson }}, {{ product.unit_price }})'>
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" viewBox="0 0 16 16"><path d="M12.146.146a.5.5 0 0 1 .708 0l3 3a.5.5 0 0 1 0 .708l-10 10a.5.5 0 0 1-.168.11l-5 2a.5.5 0 0 1-.65-.65l2-5a.5.5 0 0 1 .11-.168l10-10zM11.207 2.5 13.5 4.793 14.793 3.5 12.5 1.207 11.207 2.5zm1.586 3L10.5 3.207 4 9.707V10h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.5h.293l6.5-6.5zm-9.761 5.175-.106.106-1.528 3.821 3.821-1.528.106-.106A.5.5 0 0 1 5 12.5V12h-.5a.5.5 0 0 1-.5-.5V11h-.5a.5.5 0 0 1-.468-.325z"/></svg>
+                                </button>
+                                <form method="POST" action="{{ url_for('admin.products_delete', id=product.id) }}" style="display: inline;" onsubmit="return confirm('정말 삭제하시겠습니까?')">
+                                    <button type="submit" class="btn btn-sm btn-outline-danger" title="삭제">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" viewBox="0 0 16 16"><path d="M5.5 5.5A.5.5 0 0 1 6 6v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm2.5 0a.5.5 0 0 1 .5.5v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm3 .5a.5.5 0 0 0-1 0v6a.5.5 0 0 0 1 0V6z"/><path fill-rule="evenodd" d="M14.5 3a1 1 0 0 1-1 1H13v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V4h-.5a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1H6a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1h3.5a1 1 0 0 1 1 1v1zM4.118 4 4 4.059V13a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1V4.059L11.882 4H4.118zM2.5 3V2h11v1h-11z"/></svg>
+                                    </button>
+                                </form>
+                            </div>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="6" class="empty-state">
+                            <p>등록된 가격이 없습니다.</p>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Product Modal -->
+<div class="modal fade" id="productModal" tabindex="-1" aria-labelledby="productModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="productModalLabel">가격 등록</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form id="productForm" method="POST">
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">품목 <span class="required">*</span></label>
+                        <select name="category" id="modal_category" class="form-select" required>
+                            <option value="">선택</option>
+                            <option value="식용유">식용유</option>
+                            <option value="밀가루">밀가루</option>
+                            <option value="폐유">폐유</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">프랜차이즈 <span class="required">*</span></label>
+                        <select name="franchise_id" id="modal_franchise_id" class="form-select" required>
+                            <option value="">선택</option>
+                            {% for franchise in franchises %}
+                            <option value="{{ franchise.id }}">{{ franchise.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">단가 <span class="required">*</span></label>
+                        <div class="input-group">
+                            <input type="number" name="unit_price" id="modal_unit_price" class="form-control" required min="0">
+                            <span class="input-group-text">원</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">취소</button>
+                    <button type="submit" class="btn btn-primary" id="modalSubmitBtn">등록하기</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const addUrl = "{{ url_for('admin.products_add') }}";
+
+function sortTable(value) {
+    const [sort, order] = value.split('-');
+    window.location.href = `{{ url_for('admin.products_list') }}?sort=${sort}&order=${order}`;
+}
+
+function openAddModal() {
+    document.getElementById('productModalLabel').textContent = '가격 등록';
+    document.getElementById('modalSubmitBtn').textContent = '등록하기';
+    document.getElementById('productForm').action = addUrl;
+
+    // Clear form
+    document.getElementById('modal_category').value = '';
+    document.getElementById('modal_franchise_id').value = '';
+    document.getElementById('modal_unit_price').value = '';
+}
+
+function openEditModal(productId, category, franchiseId, unitPrice) {
+    document.getElementById('productModalLabel').textContent = '가격 변경';
+    document.getElementById('modalSubmitBtn').textContent = '변경하기';
+    document.getElementById('productForm').action = `/admin/products/${productId}/edit`;
+
+    // Fill form
+    document.getElementById('modal_category').value = category;
+    document.getElementById('modal_franchise_id').value = franchiseId;
+    document.getElementById('modal_unit_price').value = unitPrice;
+
+    // Show modal
+    const modal = new bootstrap.Modal(document.getElementById('productModal'));
+    modal.show();
+}
+</script>
+{% endblock %}

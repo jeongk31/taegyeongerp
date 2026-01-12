@@ -1,0 +1,235 @@
+{% extends "base.html" %}
+{% block title %}매장 상태 관리 - 태경바이오 ERP{% endblock %}
+
+{% block extra_css %}
+<style>
+    .status-table {
+        font-size: 0.85rem;
+    }
+    .status-table th, .status-table td {
+        padding: 0.4rem 0.5rem;
+        vertical-align: middle;
+        text-align: center;
+    }
+    .status-table .store-name {
+        text-align: left;
+    }
+    .franchise-header {
+        background-color: #f8f9fa;
+        font-weight: 500;
+        text-align: left !important;
+    }
+    .status-badge {
+        display: inline-block;
+        width: 20px;
+        height: 20px;
+        border-radius: 3px;
+        cursor: default;
+    }
+    .status-badge.active {
+        background-color: #dc3545;
+    }
+    .status-badge.inactive {
+        background-color: #e9ecef;
+    }
+    .status-badge.manual {
+        cursor: pointer;
+    }
+    .status-badge.manual:hover {
+        opacity: 0.8;
+    }
+    .legend {
+        font-size: 0.8rem;
+    }
+    .legend-item {
+        display: inline-flex;
+        align-items: center;
+        margin-right: 1rem;
+    }
+    .legend-badge {
+        width: 14px;
+        height: 14px;
+        border-radius: 2px;
+        margin-right: 0.25rem;
+    }
+    .auto-label {
+        color: #6c757d;
+        font-size: 0.7rem;
+    }
+    .manual-label {
+        color: #0d6efd;
+        font-size: 0.7rem;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h2>매장 상태 관리</h2>
+    <div class="d-flex gap-2 align-items-center">
+        <div class="export-buttons no-print">
+            <button class="btn btn-success btn-sm export-btn" onclick="exportTableToExcel('storeStatusTable', '매장상태목록')">
+                <i class="bi bi-file-earmark-excel"></i> Excel
+            </button>
+            <button class="btn btn-danger btn-sm export-btn" onclick="exportTableToPDF('storeStatusTable', '매장상태목록')">
+                <i class="bi bi-file-earmark-pdf"></i> PDF
+            </button>
+            <button class="btn btn-secondary btn-sm export-btn" onclick="printTable()">
+                <i class="bi bi-printer"></i> 인쇄
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Legend -->
+<div class="card mb-3">
+    <div class="card-body py-2">
+        <div class="legend">
+            <span class="legend-item">
+                <span class="legend-badge" style="background-color: #dc3545;"></span>
+                해당 (빨간색)
+            </span>
+            <span class="legend-item">
+                <span class="legend-badge" style="background-color: #e9ecef;"></span>
+                해당없음
+            </span>
+            <span class="legend-item ms-3 text-muted">|</span>
+            <span class="legend-item ms-2">
+                <span class="auto-label">자동</span> = 데이터 기반 자동 계산
+            </span>
+            <span class="legend-item">
+                <span class="manual-label">수동</span> = 클릭하여 변경 가능
+            </span>
+        </div>
+    </div>
+</div>
+
+<!-- Status Table -->
+<div class="card">
+    <div class="card-header">
+        <span>{{ jungsung.contact_person or jungsung.business_name }} 담당 매장</span>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table id="storeStatusTable" class="table table-sm table-bordered status-table mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th rowspan="2" class="align-middle">프랜차이즈</th>
+                        <th rowspan="2" class="align-middle">매장명</th>
+                        <th colspan="3" class="text-center">
+                            <span class="auto-label">자동</span>
+                        </th>
+                        <th colspan="2" class="text-center">
+                            <span class="manual-label">수동</span>
+                        </th>
+                    </tr>
+                    <tr>
+                        <th style="width: 100px;">2달이상<br>출고x</th>
+                        <th style="width: 100px;">미사용<br>매장</th>
+                        <th style="width: 100px;">폐유미수거<br>매장</th>
+                        <th style="width: 100px;">폐업<br>매장</th>
+                        <th style="width: 100px;">악성미수<br>매장</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for franchise_id, group in franchise_groups.items() %}
+                    {% for store in group.stores %}
+                    <tr data-store-id="{{ store.id }}">
+                        {% if loop.first %}
+                        <td rowspan="{{ group.stores|length }}" class="franchise-header align-middle">
+                            {{ group.franchise.name if group.franchise else '-' }}
+                        </td>
+                        {% endif %}
+                        <td class="store-name">{{ store.name }}</td>
+                        <!-- Automatic flags (read-only) -->
+                        <td>
+                            <span class="status-badge {% if store.no_shipment_2months %}active{% else %}inactive{% endif %}"
+                                  title="2달이상 출고x"></span>
+                        </td>
+                        <td>
+                            <span class="status-badge {% if store.unused_store %}active{% else %}inactive{% endif %}"
+                                  title="미사용매장"></span>
+                        </td>
+                        <td>
+                            <span class="status-badge {% if store.uncollected_waste_oil %}active{% else %}inactive{% endif %}"
+                                  title="폐유미수거매장"></span>
+                        </td>
+                        <!-- Manual flags (clickable) -->
+                        <td>
+                            <span class="status-badge manual {% if store.closed_store %}active{% else %}inactive{% endif %}"
+                                  title="폐업매장 - 클릭하여 변경"
+                                  data-field="closed_store"
+                                  data-store-id="{{ store.id }}"
+                                  onclick="toggleStatus(this)"></span>
+                        </td>
+                        <td>
+                            <span class="status-badge manual {% if store.bad_debt_store %}active{% else %}inactive{% endif %}"
+                                  title="악성미수매장 - 클릭하여 변경"
+                                  data-field="bad_debt_store"
+                                  data-store-id="{{ store.id }}"
+                                  onclick="toggleStatus(this)"></span>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                    {% else %}
+                    <tr>
+                        <td colspan="7" class="text-center text-muted py-3">
+                            담당 매장이 없습니다.
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Info Note -->
+<div class="mt-3">
+    <small class="text-muted">
+        * <span class="auto-label">자동</span> 상태는 최근 2개월 데이터를 기준으로 자동 계산됩니다.<br>
+        * <span class="manual-label">수동</span> 상태는 클릭하여 직접 변경할 수 있습니다.
+    </small>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    function toggleStatus(element) {
+        const storeId = element.dataset.storeId;
+        const field = element.dataset.field;
+        const isActive = element.classList.contains('active');
+        const newValue = !isActive;
+
+        fetch('{{ url_for('admin.update_store_status') }}', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                store_id: parseInt(storeId),
+                field: field,
+                value: newValue
+            })
+        })
+        .then(response => response.json())
+        .then(result => {
+            if (result.success) {
+                if (newValue) {
+                    element.classList.remove('inactive');
+                    element.classList.add('active');
+                } else {
+                    element.classList.remove('active');
+                    element.classList.add('inactive');
+                }
+            } else {
+                alert(result.message);
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('오류가 발생했습니다.');
+        });
+    }
+</script>
+{% endblock %}

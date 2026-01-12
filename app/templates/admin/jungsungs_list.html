@@ -1,0 +1,261 @@
+{% extends "base.html" %}
+{% block title %}담당중상 - 태경바이오 ERP{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h2>담당중상</h2>
+    <div class="d-flex gap-2 align-items-center">
+        <div class="export-buttons no-print">
+            <button class="btn btn-success btn-sm export-btn" onclick="exportTableToExcel('jungsungsTable', '담당중상목록')">
+                <i class="bi bi-file-earmark-excel"></i> Excel
+            </button>
+            <button class="btn btn-danger btn-sm export-btn" onclick="exportTableToPDF('jungsungsTable', '담당중상목록')">
+                <i class="bi bi-file-earmark-pdf"></i> PDF
+            </button>
+            <button class="btn btn-secondary btn-sm export-btn" onclick="printTable()">
+                <i class="bi bi-printer"></i> 인쇄
+            </button>
+        </div>
+        <select class="form-select form-select-sm" style="width: auto;" onchange="sortTable(this.value)">
+            <option value="id-asc" {% if sort == 'id' and order == 'asc' %}selected{% endif %}>ID ↑</option>
+            <option value="id-desc" {% if sort == 'id' and order == 'desc' %}selected{% endif %}>ID ↓</option>
+            <option value="business_name-asc" {% if sort == 'business_name' and order == 'asc' %}selected{% endif %}>사업자명 ↑</option>
+            <option value="business_name-desc" {% if sort == 'business_name' and order == 'desc' %}selected{% endif %}>사업자명 ↓</option>
+            <option value="created_at-desc" {% if sort == 'created_at' and order == 'desc' %}selected{% endif %}>최신순</option>
+            <option value="created_at-asc" {% if sort == 'created_at' and order == 'asc' %}selected{% endif %}>오래된순</option>
+        </select>
+        <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#jungsungModal" onclick="openAddModal()">등록하기</button>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table id="jungsungsTable" class="table">
+                <thead>
+                    <tr>
+                        <th style="width: 60px;">ID</th>
+                        <th>소속지사</th>
+                        <th>사업자명</th>
+                        <th>아이디</th>
+                        <th>담당자명</th>
+                        <th>연락처</th>
+                        <th>상태</th>
+                        <th>등록일</th>
+                        {% if current_user.is_admin() %}
+                        <th style="width: 140px;"></th>
+                        {% else %}
+                        <th style="width: 40px;"></th>
+                        {% endif %}
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for jungsung in jungsungs %}
+                    <tr class="{% if not jungsung.is_active %}table-secondary{% endif %}">
+                        <td class="id-cell">{{ jungsung.id }}</td>
+                        <td>{{ jungsung.branch.name if jungsung.branch else '-' }}</td>
+                        <td>{{ jungsung.business_name }}</td>
+                        <td>
+                            {% set jungsung_user = jungsung.users | selectattr('role', 'equalto', 'jungsung') | first %}
+                            {% if jungsung_user %}
+                            <span class="text-muted">{{ jungsung_user.username }}</span>
+                            {% else %}
+                            <span class="text-danger">-</span>
+                            {% endif %}
+                        </td>
+                        <td>{{ jungsung.contact_person or '-' }}</td>
+                        <td>{{ jungsung.phone or '-' }}</td>
+                        <td>
+                            {% if jungsung.is_active %}
+                            <span class="badge bg-success">활성</span>
+                            {% else %}
+                            <span class="badge bg-secondary">비활성</span>
+                            {% endif %}
+                        </td>
+                        <td>{{ jungsung.created_at.strftime('%Y-%m-%d') }}</td>
+                        <td>
+                            {% if current_user.is_admin() %}
+                            <div class="d-flex gap-1">
+                                <button type="button" class="btn btn-sm btn-outline-secondary" title="변경" onclick='openEditModal({{ jungsung.id }}, {{ jungsung.branch_id|tojson }}, {{ jungsung.business_name|tojson }}, {{ (jungsung.contact_person or "")|tojson }}, {{ (jungsung.phone or "")|tojson }})'>
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" viewBox="0 0 16 16"><path d="M12.146.146a.5.5 0 0 1 .708 0l3 3a.5.5 0 0 1 0 .708l-10 10a.5.5 0 0 1-.168.11l-5 2a.5.5 0 0 1-.65-.65l2-5a.5.5 0 0 1 .11-.168l10-10zM11.207 2.5 13.5 4.793 14.793 3.5 12.5 1.207 11.207 2.5zm1.586 3L10.5 3.207 4 9.707V10h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.5h.293l6.5-6.5zm-9.761 5.175-.106.106-1.528 3.821 3.821-1.528.106-.106A.5.5 0 0 1 5 12.5V12h-.5a.5.5 0 0 1-.5-.5V11h-.5a.5.5 0 0 1-.468-.325z"/></svg>
+                                </button>
+                                <form method="POST" action="{{ url_for('admin.jungsungs_delete', id=jungsung.id) }}" style="display: inline;" onsubmit="return confirm('정말 삭제하시겠습니까? 연결된 계정도 함께 삭제됩니다.')">
+                                    <button type="submit" class="btn btn-sm btn-outline-danger" title="삭제">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" viewBox="0 0 16 16"><path d="M5.5 5.5A.5.5 0 0 1 6 6v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm2.5 0a.5.5 0 0 1 .5.5v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm3 .5a.5.5 0 0 0-1 0v6a.5.5 0 0 0 1 0V6z"/><path fill-rule="evenodd" d="M14.5 3a1 1 0 0 1-1 1H13v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V4h-.5a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1H6a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1h3.5a1 1 0 0 1 1 1v1zM4.118 4 4 4.059V13a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1V4.059L11.882 4H4.118zM2.5 3V2h11v1h-11z"/></svg>
+                                    </button>
+                                </form>
+                                <form method="POST" action="{{ url_for('admin.jungsungs_toggle', id=jungsung.id) }}" style="display: inline;">
+                                    <button type="submit" class="btn btn-sm btn-outline-{% if jungsung.is_active %}secondary{% else %}success{% endif %}" style="min-width: 56px;">
+                                        {% if jungsung.is_active %}중지{% else %}활성화{% endif %}
+                                    </button>
+                                </form>
+                            </div>
+                            {% else %}
+                            <button type="button" class="btn btn-sm btn-outline-secondary" title="변경" onclick='openEditModal({{ jungsung.id }}, {{ jungsung.branch_id|tojson }}, {{ jungsung.business_name|tojson }}, {{ (jungsung.contact_person or "")|tojson }}, {{ (jungsung.phone or "")|tojson }})'>
+                                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" viewBox="0 0 16 16"><path d="M12.146.146a.5.5 0 0 1 .708 0l3 3a.5.5 0 0 1 0 .708l-10 10a.5.5 0 0 1-.168.11l-5 2a.5.5 0 0 1-.65-.65l2-5a.5.5 0 0 1 .11-.168l10-10zM11.207 2.5 13.5 4.793 14.793 3.5 12.5 1.207 11.207 2.5zm1.586 3L10.5 3.207 4 9.707V10h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.5h.293l6.5-6.5zm-9.761 5.175-.106.106-1.528 3.821 3.821-1.528.106-.106A.5.5 0 0 1 5 12.5V12h-.5a.5.5 0 0 1-.5-.5V11h-.5a.5.5 0 0 1-.468-.325z"/></svg>
+                            </button>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="{% if current_user.is_admin() %}9{% else %}9{% endif %}" class="empty-state">
+                            <p>등록된 담당중상이 없습니다.</p>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Jungsung Modal -->
+<div class="modal fade" id="jungsungModal" tabindex="-1" aria-labelledby="jungsungModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="jungsungModalLabel">담당중상 등록</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form id="jungsungForm" method="POST">
+                <div class="modal-body">
+                    {% if current_user.is_admin() %}
+                    <div class="mb-3">
+                        <label class="form-label">소속지사 <span class="required">*</span></label>
+                        <select name="branch_id" id="modal_branch_id" class="form-select" required>
+                            <option value="">선택</option>
+                            {% for branch in branches %}
+                            <option value="{{ branch.id }}">{{ branch.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    {% endif %}
+                    <div class="mb-3">
+                        <label class="form-label">사업자명 <span class="required">*</span></label>
+                        <input type="text" name="business_name" id="modal_business_name" class="form-control" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">담당자명</label>
+                        <input type="text" name="contact_person" id="modal_contact_person" class="form-control">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">연락처</label>
+                        <input type="text" name="phone" id="modal_phone" class="form-control phone-input" placeholder="010-1234-5678" maxlength="13">
+                    </div>
+                    <hr id="accountSection">
+                    <div class="mb-3" id="usernameGroup">
+                        <label class="form-label">아이디 <span class="required">*</span></label>
+                        <input type="text" name="username" id="modal_username" class="form-control" required>
+                        <small class="text-muted">담당중상 로그인에 사용됩니다</small>
+                    </div>
+                    <div class="mb-3" id="passwordGroup">
+                        <label class="form-label">임시 비밀번호</label>
+                        <input type="text" name="password" id="modal_password" class="form-control" value="1234">
+                        <small class="text-muted">첫 로그인 시 변경해야 합니다</small>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-warning" id="resetPasswordBtn" style="display: none; margin-right: auto;" onclick="resetPassword()">PW초기화</button>
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">취소</button>
+                    <button type="submit" class="btn btn-primary" id="modalSubmitBtn">등록하기</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const addUrl = "{{ url_for('admin.jungsungs_add') }}";
+const isAdmin = {{ 'true' if current_user.is_admin() else 'false' }};
+
+function sortTable(value) {
+    const [sort, order] = value.split('-');
+    window.location.href = `{{ url_for('admin.jungsungs_list') }}?sort=${sort}&order=${order}`;
+}
+
+function openAddModal() {
+    document.getElementById('jungsungModalLabel').textContent = '담당중상 등록';
+    document.getElementById('modalSubmitBtn').textContent = '등록하기';
+    document.getElementById('jungsungForm').action = addUrl;
+
+    // Clear form
+    if (isAdmin) {
+        document.getElementById('modal_branch_id').value = '';
+    }
+    document.getElementById('modal_business_name').value = '';
+    document.getElementById('modal_contact_person').value = '';
+    document.getElementById('modal_phone').value = '';
+    document.getElementById('modal_username').value = '';
+    document.getElementById('modal_password').value = '1234';
+
+    // Show account fields
+    document.getElementById('accountSection').style.display = 'block';
+    document.getElementById('usernameGroup').style.display = 'block';
+    document.getElementById('passwordGroup').style.display = 'block';
+    document.getElementById('modal_username').required = true;
+
+    // Hide reset password button
+    document.getElementById('resetPasswordBtn').style.display = 'none';
+}
+
+function resetPassword() {
+    if (confirm('비밀번호를 초기화하시겠습니까?')) {
+        const url = document.getElementById('resetPasswordBtn').dataset.url;
+        const form = document.createElement('form');
+        form.method = 'POST';
+        form.action = url;
+        document.body.appendChild(form);
+        form.submit();
+    }
+}
+
+function openEditModal(jungsungId, branchId, businessName, contactPerson, phone) {
+    document.getElementById('jungsungModalLabel').textContent = '담당중상 변경';
+    document.getElementById('modalSubmitBtn').textContent = '변경하기';
+    document.getElementById('jungsungForm').action = `/admin/jungsungs/${jungsungId}/edit`;
+
+    // Fill form
+    if (isAdmin) {
+        document.getElementById('modal_branch_id').value = branchId;
+    }
+    document.getElementById('modal_business_name').value = businessName;
+    document.getElementById('modal_contact_person').value = contactPerson;
+    document.getElementById('modal_phone').value = phone;
+
+    // Hide account fields for edit
+    document.getElementById('accountSection').style.display = 'none';
+    document.getElementById('usernameGroup').style.display = 'none';
+    document.getElementById('passwordGroup').style.display = 'none';
+    document.getElementById('modal_username').required = false;
+
+    // Show reset password button (only for admin)
+    if (isAdmin) {
+        document.getElementById('resetPasswordBtn').style.display = 'block';
+        document.getElementById('resetPasswordBtn').dataset.url = `/admin/jungsungs/${jungsungId}/reset-password`;
+    }
+
+    // Show modal
+    const modal = new bootstrap.Modal(document.getElementById('jungsungModal'));
+    modal.show();
+}
+
+// Auto-format phone number with hyphens
+document.querySelectorAll('.phone-input').forEach(function(input) {
+    input.addEventListener('input', function(e) {
+        let value = e.target.value.replace(/\D/g, '');
+        if (value.length > 11) value = value.slice(0, 11);
+
+        if (value.length <= 3) {
+            e.target.value = value;
+        } else if (value.length <= 7) {
+            e.target.value = value.slice(0, 3) + '-' + value.slice(3);
+        } else {
+            e.target.value = value.slice(0, 3) + '-' + value.slice(3, 7) + '-' + value.slice(7);
+        }
+    });
+});
+</script>
+{% endblock %}

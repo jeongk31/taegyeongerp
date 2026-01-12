@@ -1,0 +1,179 @@
+{% extends "base.html" %}
+
+{% block title %}프랜차이즈 대시보드 - 태경바이오 ERP{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h4 class="mb-0">
+        <i class="bi bi-speedometer2 text-primary"></i> 프랜차이즈 본사 대시보드
+    </h4>
+    <span class="badge bg-purple" style="background-color: #6f42c1;">프랜차이즈 본사</span>
+</div>
+
+<!-- Franchise Info -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card shadow-sm text-white" style="background-color: #6f42c1;">
+            <div class="card-body">
+                <div class="row align-items-center">
+                    <div class="col-auto">
+                        <i class="bi bi-shop" style="font-size: 2.5rem;"></i>
+                    </div>
+                    <div class="col">
+                        <h5 class="mb-1">{{ franchise.name }}</h5>
+                        <p class="mb-0 opacity-75">담당자: {{ current_user.name or current_user.username }}</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Stats Cards -->
+<div class="row mb-4">
+    <div class="col-md-3">
+        <div class="card stat-card shadow-sm">
+            <div class="card-body">
+                <h6 class="text-muted mb-1">총 매장 수</h6>
+                <h4 class="mb-0">{{ total_stores }}</h4>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card stat-card shadow-sm">
+            <div class="card-body">
+                <h6 class="text-muted mb-1">이슈 매장</h6>
+                <h4 class="mb-0">{{ stores_with_issues }}</h4>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card stat-card shadow-sm">
+            <div class="card-body">
+                <h6 class="text-muted mb-1">폐업 매장</h6>
+                <h4 class="mb-0">{{ stores_closed }}</h4>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card stat-card shadow-sm">
+            <div class="card-body">
+                <h6 class="text-muted mb-1">악성미수 매장</h6>
+                <h4 class="mb-0">{{ stores_bad_debt }}</h4>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Quick Navigation -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card shadow-sm">
+            <div class="card-header">
+                <h6 class="mb-0"><i class="bi bi-compass"></i> 빠른 이동</h6>
+            </div>
+            <div class="card-body">
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <a href="{{ url_for('admin.complaint_stores') }}" class="btn btn-outline-warning btn-lg w-100 d-flex align-items-center justify-content-between">
+                            <div class="d-flex align-items-center">
+                                <i class="bi bi-exclamation-triangle-fill me-3" style="font-size: 1.5rem;"></i>
+                                <div class="text-start">
+                                    <div class="fw-bold">컴플레인 매장관리</div>
+                                    <small class="text-muted">매장 상태 플래그 확인</small>
+                                </div>
+                            </div>
+                            <i class="bi bi-arrow-right"></i>
+                        </a>
+                    </div>
+                    <div class="col-md-6">
+                        <a href="{{ url_for('admin.erp_tracking_franchise', search_type='weekly') }}" class="btn btn-outline-primary btn-lg w-100 d-flex align-items-center justify-content-between">
+                            <div class="d-flex align-items-center">
+                                <i class="bi bi-calendar-week me-3" style="font-size: 1.5rem;"></i>
+                                <div class="text-start">
+                                    <div class="fw-bold">ERP 등록수량 체크 (주별)</div>
+                                    <small class="text-muted">주별 출고 및 등록 수량</small>
+                                </div>
+                            </div>
+                            <i class="bi bi-arrow-right"></i>
+                        </a>
+                    </div>
+                    <div class="col-md-6">
+                        <a href="{{ url_for('admin.erp_tracking_franchise', search_type='monthly') }}" class="btn btn-outline-success btn-lg w-100 d-flex align-items-center justify-content-between">
+                            <div class="d-flex align-items-center">
+                                <i class="bi bi-calendar-month me-3" style="font-size: 1.5rem;"></i>
+                                <div class="text-start">
+                                    <div class="fw-bold">ERP 등록수량 체크 (월별)</div>
+                                    <small class="text-muted">월별 출고 및 등록 수량</small>
+                                </div>
+                            </div>
+                            <i class="bi bi-arrow-right"></i>
+                        </a>
+                    </div>
+                    <div class="col-md-6">
+                        <a href="{{ url_for('admin.erp_tracking_franchise', search_type='period') }}" class="btn btn-outline-info btn-lg w-100 d-flex align-items-center justify-content-between">
+                            <div class="d-flex align-items-center">
+                                <i class="bi bi-calendar-range me-3" style="font-size: 1.5rem;"></i>
+                                <div class="text-start">
+                                    <div class="fw-bold">ERP 등록수량 체크 (기간)</div>
+                                    <small class="text-muted">기간별 출고 및 등록 수량</small>
+                                </div>
+                            </div>
+                            <i class="bi bi-arrow-right"></i>
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Store Issue Summary -->
+<div class="row">
+    <div class="col-12">
+        <div class="card shadow-sm">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span><i class="bi bi-flag"></i> 매장 상태 요약</span>
+                <a href="{{ url_for('admin.complaint_stores') }}" class="btn btn-sm btn-outline-primary">전체 보기</a>
+            </div>
+            <div class="card-body">
+                <div class="row g-3">
+                    <div class="col-md-4">
+                        <div class="d-flex align-items-center p-3 bg-light rounded">
+                            <div class="me-3">
+                                <i class="bi bi-hourglass text-muted" style="font-size: 1.5rem;"></i>
+                            </div>
+                            <div class="flex-grow-1">
+                                <div class="text-muted small">2달 이상 출고x</div>
+                                <div class="fw-bold fs-5">{{ stores_with_no_shipment }}</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="d-flex align-items-center p-3 bg-light rounded">
+                            <div class="me-3">
+                                <i class="bi bi-pause-circle text-muted" style="font-size: 1.5rem;"></i>
+                            </div>
+                            <div class="flex-grow-1">
+                                <div class="text-muted small">미사용 매장</div>
+                                <div class="fw-bold fs-5">{{ stores_unused }}</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="d-flex align-items-center p-3 bg-light rounded">
+                            <div class="me-3">
+                                <i class="bi bi-droplet text-muted" style="font-size: 1.5rem;"></i>
+                            </div>
+                            <div class="flex-grow-1">
+                                <div class="text-muted small">폐유 미수거</div>
+                                <div class="fw-bold fs-5">{{ stores_waste_uncollected }}</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

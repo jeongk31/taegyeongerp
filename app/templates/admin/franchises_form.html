@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+{% block title %}{% if franchise %}프랜차이즈 변경{% else %}프랜차이즈 등록{% endif %} - 태경바이오 ERP{% endblock %}
+
+{% block content %}
+<a href="{{ url_for('admin.franchises_list') }}" class="back-link">&larr; 목록으로</a>
+
+<div class="row">
+    <div class="col-lg-6">
+        <div class="card">
+            <div class="card-header">{% if franchise %}프랜차이즈 변경{% else %}프랜차이즈 등록{% endif %}</div>
+            <div class="card-body">
+                <form method="POST">
+                    <div class="row mb-3">
+                        <div class="col-md-8">
+                            <label class="form-label">프랜차이즈명 <span class="required">*</span></label>
+                            <input type="text" name="name" class="form-control" value="{{ franchise.name if franchise else '' }}" required>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">코드</label>
+                            <input type="text" name="code" class="form-control" value="{{ franchise.code if franchise else '' }}" placeholder="FR001">
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">주소</label>
+                        <input type="text" name="address" class="form-control" value="{{ franchise.address if franchise else '' }}">
+                    </div>
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label">담당자명</label>
+                            <input type="text" name="contact_person" class="form-control" value="{{ franchise.contact_person if franchise else '' }}">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">연락처</label>
+                            <input type="text" name="phone" class="form-control phone-input" value="{{ franchise.phone if franchise else '' }}" placeholder="010-0000-0000" maxlength="13">
+                        </div>
+                    </div>
+
+                    {% if not franchise %}
+                    <hr>
+                    <h6 class="text-muted mb-3">계정 정보</h6>
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label">아이디 <span class="required">*</span></label>
+                            <input type="text" name="username" class="form-control" required>
+                            <small class="text-muted">프랜차이즈 로그인에 사용됩니다</small>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">임시 비밀번호</label>
+                            <input type="text" name="password" class="form-control" value="1234">
+                            <small class="text-muted">첫 로그인 시 변경해야 합니다</small>
+                        </div>
+                    </div>
+                    {% endif %}
+
+                    <hr class="section-divider">
+
+                    <div class="d-flex gap-2">
+                        <button type="submit" class="btn btn-primary">{% if franchise %}변경{% else %}등록{% endif %}</button>
+                        <a href="{{ url_for('admin.franchises_list') }}" class="btn btn-outline-secondary">취소</a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// Auto-format phone number with hyphens
+document.querySelectorAll('.phone-input').forEach(function(input) {
+    input.addEventListener('input', function(e) {
+        let value = e.target.value.replace(/\D/g, '');
+        if (value.length > 11) value = value.slice(0, 11);
+
+        if (value.length <= 3) {
+            e.target.value = value;
+        } else if (value.length <= 7) {
+            e.target.value = value.slice(0, 3) + '-' + value.slice(3);
+        } else {
+            e.target.value = value.slice(0, 3) + '-' + value.slice(3, 7) + '-' + value.slice(7);
+        }
+    });
+});
+</script>
+{% endblock %}

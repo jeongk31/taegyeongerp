@@ -1,0 +1,115 @@
+{% extends "base.html" %}
+{% block title %}날자별 출고량 검색 - 태경바이오 ERP{% endblock %}
+
+{% block extra_css %}
+<style>
+    .daily-table {
+        font-size: 0.8rem;
+    }
+    .daily-table th, .daily-table td {
+        padding: 0.3rem 0.5rem;
+    }
+    .daily-table .col-oil {
+        background-color: #fff;
+    }
+    .daily-table .col-flour {
+        background-color: #d4edda;
+    }
+    .daily-table tfoot {
+        background-color: #fff3cd;
+        font-weight: bold;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h2>날자별 출고량 검색</h2>
+</div>
+
+<!-- Search Filters -->
+<div class="card mb-4">
+    <div class="card-body py-2">
+        <form method="GET" action="{{ url_for('admin.daily_shipments') }}" class="row g-2 align-items-end" style="font-size: 0.85rem;">
+            <div class="col-auto">
+                <label class="form-label mb-1">날자별검색</label>
+                <div class="d-flex align-items-center gap-1">
+                    <input type="date" name="date_from" class="form-control form-control-sm" style="width: 140px;" value="{{ filters.date_from or '' }}">
+                    <span>~</span>
+                    <input type="date" name="date_to" class="form-control form-control-sm" style="width: 140px;" value="{{ filters.date_to or '' }}">
+                </div>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label mb-1">담당자검색</label>
+                <select name="jungsung_id" class="form-select form-select-sm">
+                    <option value="">전체</option>
+                    {% for jungsung in jungsungs %}
+                    <option value="{{ jungsung.id }}" {% if filters.jungsung_id == jungsung.id %}selected{% endif %}>{{ jungsung.contact_person }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label mb-1">프랜차이즈명검색</label>
+                <select name="franchise_id" class="form-select form-select-sm">
+                    <option value="">전체</option>
+                    {% for franchise in franchises %}
+                    <option value="{{ franchise.id }}" {% if filters.franchise_id == franchise.id %}selected{% endif %}>{{ franchise.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-auto">
+                <button type="submit" class="btn btn-sm btn-primary">검색</button>
+                <a href="{{ url_for('admin.daily_shipments') }}" class="btn btn-sm btn-outline-secondary">초기화</a>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Daily Shipments Table -->
+<div class="card">
+    <div class="card-header">
+        <span>출고 내역</span>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-sm table-bordered daily-table mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>날자별검색</th>
+                        <th>담당자검색</th>
+                        <th>프랜차이즈명검색</th>
+                        <th class="text-end col-oil">식용유출</th>
+                        <th class="text-end col-flour">밀가루출고</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for data in daily_list %}
+                    <tr>
+                        <td>{{ data.date.strftime('%m/%d/%Y') }}</td>
+                        <td>{{ data.jungsung.contact_person if data.jungsung else '-' }}</td>
+                        <td>{{ data.franchise.name if data.franchise else '-' }}</td>
+                        <td class="text-end col-oil">{{ '{:,}'.format(data.oil) if data.oil else '' }}</td>
+                        <td class="text-end col-flour">{{ '{:,}'.format(data.flour) if data.flour else '' }}</td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="5" class="text-center text-muted py-3">
+                            해당 기간에 출고 내역이 없습니다.
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+                {% if daily_list %}
+                <tfoot>
+                    <tr>
+                        <td colspan="3" class="text-end">합계</td>
+                        <td class="text-end">{{ '{:,}'.format(total_oil) }}</td>
+                        <td class="text-end">{{ '{:,}'.format(total_flour) }}</td>
+                    </tr>
+                </tfoot>
+                {% endif %}
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

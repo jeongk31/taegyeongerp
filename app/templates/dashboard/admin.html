@@ -1,0 +1,264 @@
+{% extends "base.html" %}
+
+{% block title %}관리자 대시보드 - 태경바이오 ERP{% endblock %}
+
+{% block extra_css %}
+<style>
+    .dashboard-stat-card {
+        border-left: 4px solid;
+        transition: transform 0.2s, box-shadow 0.2s;
+    }
+    .dashboard-stat-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15) !important;
+    }
+    .dashboard-stat-card .stat-number {
+        font-size: 2rem;
+        font-weight: 700;
+    }
+    .quick-action-card {
+        transition: all 0.2s;
+        cursor: pointer;
+        text-decoration: none;
+        color: inherit;
+    }
+    .quick-action-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15) !important;
+        color: inherit;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h3 class="mb-1">
+            <i class="bi bi-speedometer2 text-primary"></i> 관리자 대시보드
+        </h3>
+        <p class="text-muted mb-0">전체 시스템 현황을 한눈에 확인하세요</p>
+    </div>
+    <span class="badge bg-danger fs-6 px-3 py-2">관리자</span>
+</div>
+
+<!-- Main Stats -->
+<div class="row g-3 mb-4">
+    <div class="col-xl-3 col-md-6">
+        <div class="card dashboard-stat-card shadow-sm" style="border-left-color: #0d6efd;">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-start mb-2">
+                    <div>
+                        <p class="text-muted mb-1 small">전체 사용자</p>
+                        <div class="stat-number text-primary">{{ "{:,}".format(total_users) }}</div>
+                    </div>
+                    <div class="p-3 bg-primary bg-opacity-10 rounded">
+                        <i class="bi bi-people fs-4 text-primary"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-xl-3 col-md-6">
+        <div class="card dashboard-stat-card shadow-sm" style="border-left-color: #198754;">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-start mb-2">
+                    <div>
+                        <p class="text-muted mb-1 small">지사</p>
+                        <div class="stat-number text-success">{{ "{:,}".format(branch_count) }}</div>
+                    </div>
+                    <div class="p-3 bg-success bg-opacity-10 rounded">
+                        <i class="bi bi-building fs-4 text-success"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-xl-3 col-md-6">
+        <div class="card dashboard-stat-card shadow-sm" style="border-left-color: #0dcaf0;">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-start mb-2">
+                    <div>
+                        <p class="text-muted mb-1 small">프랜차이즈</p>
+                        <div class="stat-number text-info">{{ "{:,}".format(franchise_count) }}</div>
+                    </div>
+                    <div class="p-3 bg-info bg-opacity-10 rounded">
+                        <i class="bi bi-shop fs-4 text-info"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-xl-3 col-md-6">
+        <div class="card dashboard-stat-card shadow-sm" style="border-left-color: #ffc107;">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-start mb-2">
+                    <div>
+                        <p class="text-muted mb-1 small">매장</p>
+                        <div class="stat-number text-warning">{{ "{:,}".format(store_count) }}</div>
+                    </div>
+                    <div class="p-3 bg-warning bg-opacity-10 rounded">
+                        <i class="bi bi-shop-window fs-4 text-warning"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Today's Activity & Month Summary -->
+<div class="row g-3 mb-4">
+    <div class="col-lg-6">
+        <div class="card shadow-sm h-100">
+            <div class="card-header bg-white">
+                <h6 class="mb-0">
+                    <i class="bi bi-calendar-day text-primary"></i> 오늘의 활동
+                </h6>
+            </div>
+            <div class="card-body">
+                <div class="row g-3">
+                    <div class="col-6">
+                        <div class="border-start border-primary border-4 ps-3">
+                            <p class="text-muted mb-1 small">오늘 입고</p>
+                            <h4 class="mb-0 text-primary">{{ "{:,}".format(today_stockins) }}</h4>
+                        </div>
+                    </div>
+                    <div class="col-6">
+                        <div class="border-start border-success border-4 ps-3">
+                            <p class="text-muted mb-1 small">오늘 출고</p>
+                            <h4 class="mb-0 text-success">{{ "{:,}".format(today_shipments) }}</h4>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-6">
+        <div class="card shadow-sm h-100">
+            <div class="card-header bg-white">
+                <h6 class="mb-0">
+                    <i class="bi bi-calendar-month text-info"></i> 이번 달 누적
+                </h6>
+            </div>
+            <div class="card-body">
+                <div class="row g-3">
+                    <div class="col-6">
+                        <div class="border-start border-primary border-4 ps-3">
+                            <p class="text-muted mb-1 small">이번 달 입고</p>
+                            <h4 class="mb-0 text-primary">{{ "{:,}".format(month_stockins) }}</h4>
+                        </div>
+                    </div>
+                    <div class="col-6">
+                        <div class="border-start border-success border-4 ps-3">
+                            <p class="text-muted mb-1 small">이번 달 출고</p>
+                            <h4 class="mb-0 text-success">{{ "{:,}".format(month_shipments) }}</h4>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Quick Actions -->
+<div class="card shadow-sm mb-4">
+    <div class="card-header bg-white">
+        <h6 class="mb-0">
+            <i class="bi bi-lightning-charge text-warning"></i> 빠른 작업
+        </h6>
+    </div>
+    <div class="card-body">
+        <div class="row g-3">
+            <div class="col-lg-3 col-md-6">
+                <a href="{{ url_for('admin.branches_list') }}" class="text-decoration-none">
+                    <div class="card quick-action-card shadow-sm h-100">
+                        <div class="card-body text-center">
+                            <div class="mb-3">
+                                <i class="bi bi-building fs-1 text-primary"></i>
+                            </div>
+                            <h6 class="mb-0">지사 관리</h6>
+                        </div>
+                    </div>
+                </a>
+            </div>
+            <div class="col-lg-3 col-md-6">
+                <a href="{{ url_for('admin.franchises_list') }}" class="text-decoration-none">
+                    <div class="card quick-action-card shadow-sm h-100">
+                        <div class="card-body text-center">
+                            <div class="mb-3">
+                                <i class="bi bi-shop fs-1 text-info"></i>
+                            </div>
+                            <h6 class="mb-0">프랜차이즈 관리</h6>
+                        </div>
+                    </div>
+                </a>
+            </div>
+            <div class="col-lg-3 col-md-6">
+                <a href="{{ url_for('admin.stockins_list') }}" class="text-decoration-none">
+                    <div class="card quick-action-card shadow-sm h-100">
+                        <div class="card-body text-center">
+                            <div class="mb-3">
+                                <i class="bi bi-box-arrow-in-down fs-1 text-success"></i>
+                            </div>
+                            <h6 class="mb-0">입고 관리</h6>
+                        </div>
+                    </div>
+                </a>
+            </div>
+            <div class="col-lg-3 col-md-6">
+                <a href="{{ url_for('admin.shipments_list') }}" class="text-decoration-none">
+                    <div class="card quick-action-card shadow-sm h-100">
+                        <div class="card-body text-center">
+                            <div class="mb-3">
+                                <i class="bi bi-box-arrow-up fs-1 text-warning"></i>
+                            </div>
+                            <h6 class="mb-0">출고 관리</h6>
+                        </div>
+                    </div>
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Recent Users -->
+<div class="card shadow-sm">
+    <div class="card-header bg-white d-flex justify-content-between align-items-center">
+        <h6 class="mb-0">
+            <i class="bi bi-people text-primary"></i> 최근 등록된 사용자
+        </h6>
+        <span class="badge bg-light text-dark">{{ recent_users|length }}명</span>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>아이디</th>
+                        <th>이름</th>
+                        <th>역할</th>
+                        <th>소속</th>
+                        <th>등록일</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for user in recent_users %}
+                    <tr>
+                        <td>{{ user.username }}</td>
+                        <td>{{ user.name or '-' }}</td>
+                        <td><span class="badge bg-{{ 'danger' if user.is_admin() else 'primary' if user.is_branch() else 'info' if user.is_jungsung() else 'secondary' }}">{{ user.get_role_display() }}</span></td>
+                        <td>{{ user.branch.name if user.branch else '-' }}</td>
+                        <td>{{ user.created_at.strftime('%Y-%m-%d') if user.created_at else '-' }}</td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="5" class="text-center text-muted py-4">
+                            등록된 사용자가 없습니다.
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

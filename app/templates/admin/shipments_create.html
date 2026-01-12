@@ -1,0 +1,403 @@
+{% extends "base.html" %}
+{% block title %}출고하기 - 태경바이오 ERP{% endblock %}
+
+{% block content %}
+<a href="{{ url_for('admin.shipments_list') }}" class="back-link">
+    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" viewBox="0 0 16 16" class="me-1">
+        <path fill-rule="evenodd" d="M15 8a.5.5 0 0 0-.5-.5H2.707l3.147-3.146a.5.5 0 1 0-.708-.708l-4 4a.5.5 0 0 0 0 .708l4 4a.5.5 0 0 0 .708-.708L2.707 8.5H14.5A.5.5 0 0 0 15 8z"/>
+    </svg>
+    목록으로
+</a>
+
+<div class="page-header">
+    <h2>출고하기</h2>
+</div>
+
+<form id="shipmentForm" method="POST" action="{{ url_for('admin.shipments_submit') }}">
+    <!-- Add Item Form -->
+    <div class="card mb-4">
+        <div class="card-header">항목 추가</div>
+        <div class="card-body">
+            <div class="row g-3 align-items-end">
+                {% if current_user.is_admin() %}
+                <div class="col-md-2">
+                    <label class="form-label">지사</label>
+                    <select id="add_branch_id" class="form-select form-select-sm">
+                        <option value="">선택</option>
+                        {% for branch in branches %}
+                        <option value="{{ branch.id }}">{{ branch.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                {% else %}
+                <input type="hidden" id="add_branch_id" value="{{ current_user.branch_id }}">
+                {% endif %}
+                <div class="col-md-2">
+                    <label class="form-label">중상</label>
+                    <select id="add_jungsung_id" class="form-select form-select-sm">
+                        <option value="">선택</option>
+                        {% for jungsung in jungsungs %}
+                        <option value="{{ jungsung.id }}">{{ jungsung.business_name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label">품목 <span class="required">*</span></label>
+                    <select id="add_category" class="form-select form-select-sm">
+                        <option value="">선택</option>
+                        {% for cat in categories %}
+                        <option value="{{ cat }}">{{ cat }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label">프랜차이즈 <span class="required">*</span></label>
+                    <select id="add_franchise" class="form-select form-select-sm">
+                        <option value="">품목 먼저 선택</option>
+                    </select>
+                    <input type="hidden" id="add_product_id" value="">
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label">매장명 <span class="required">*</span></label>
+                    <select id="add_store_id" class="form-select form-select-sm">
+                        <option value="">중상/프랜차이즈 먼저 선택</option>
+                    </select>
+                </div>
+                <div class="col-md-1">
+                    <label class="form-label">수량 <span class="required">*</span></label>
+                    <input type="number" id="add_quantity" class="form-control form-control-sm" min="1" value="1">
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label">단가</label>
+                    <div class="input-group input-group-sm">
+                        <input type="text" id="add_unit_price_display" class="form-control form-control-sm" readonly>
+                        <input type="hidden" id="add_unit_price" value="">
+                        <span class="input-group-text">원</span>
+                    </div>
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label">출고일</label>
+                    <input type="date" id="add_shipment_date" class="form-control form-control-sm" value="{{ today }}">
+                </div>
+                <div class="col-md-1">
+                    <button type="button" class="btn btn-primary btn-sm w-100" onclick="addItem()">추가</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Items Table -->
+    <div class="card mb-4">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <span>출고 항목</span>
+            <span class="badge bg-secondary" id="itemCount">0개</span>
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-sm" id="itemsTable">
+                    <thead>
+                        <tr>
+                            <th style="width: 110px;">출고일</th>
+                            {% if current_user.is_admin() %}
+                            <th>지사</th>
+                            {% endif %}
+                            <th>중상</th>
+                            <th>품목</th>
+                            <th>프랜차이즈</th>
+                            <th>매장명</th>
+                            <th class="text-end" style="width: 80px;">수량</th>
+                            <th class="text-end" style="width: 100px;">단가</th>
+                            <th class="text-end" style="width: 100px;">합계</th>
+                            <th style="width: 50px;"></th>
+                        </tr>
+                    </thead>
+                    <tbody id="itemsBody">
+                        <tr id="emptyRow">
+                            <td colspan="{{ 11 if current_user.is_admin() else 10 }}" class="empty-state">
+                                <p>항목을 추가해주세요.</p>
+                            </td>
+                        </tr>
+                    </tbody>
+                    <tfoot>
+                        <tr class="table-light">
+                            <td colspan="{{ 9 if current_user.is_admin() else 8 }}" class="text-end fw-bold">총 합계</td>
+                            <td class="text-end fw-bold" id="grandTotal">0원</td>
+                            <td></td>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Submit Button -->
+    <div class="d-flex gap-2">
+        <a href="{{ url_for('admin.shipments_list') }}" class="btn btn-outline-secondary">취소</a>
+        <button type="submit" class="btn btn-primary" id="submitBtn" disabled>출고</button>
+    </div>
+</form>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let itemIndex = 0;
+let grandTotal = 0;
+const today = '{{ today }}';
+const isAdmin = {{ 'true' if current_user.is_admin() else 'false' }};
+const userBranchId = '{{ current_user.branch_id or '' }}';
+
+// Products data for filtering
+const productsData = [
+    {% for product in products %}
+    {
+        id: {{ product.id }},
+        category: {{ product.category|tojson }},
+        franchiseId: {{ product.franchise_id or 'null' }},
+        franchiseName: {{ (product.franchise.name if product.franchise else '')|tojson }},
+        unitPrice: {{ product.unit_price }}
+    }{% if not loop.last %},{% endif %}
+    {% endfor %}
+];
+
+// Stores data for filtering
+const storesData = [
+    {% for store in stores %}
+    {
+        id: {{ store.id }},
+        name: {{ store.name|tojson }},
+        jungsungId: {{ store.jungsung_id or 'null' }},
+        franchiseId: {{ store.franchise_id or 'null' }}
+    }{% if not loop.last %},{% endif %}
+    {% endfor %}
+];
+
+// Format number with commas
+function formatNumber(num) {
+    return num.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+}
+
+// When category changes, filter franchise dropdown
+document.getElementById('add_category').addEventListener('change', function() {
+    const category = this.value;
+    const franchiseSelect = document.getElementById('add_franchise');
+
+    // Clear franchise dropdown
+    franchiseSelect.innerHTML = '<option value="">선택</option>';
+    document.getElementById('add_product_id').value = '';
+    document.getElementById('add_unit_price').value = '';
+    document.getElementById('add_unit_price_display').value = '';
+
+    if (!category) {
+        franchiseSelect.innerHTML = '<option value="">품목 먼저 선택</option>';
+        return;
+    }
+
+    // Filter products by category and add unique franchises
+    const franchiseIds = new Set();
+    productsData.filter(p => p.category === category).forEach(p => {
+        if (p.franchiseId && !franchiseIds.has(p.franchiseId)) {
+            franchiseIds.add(p.franchiseId);
+            const option = document.createElement('option');
+            option.value = p.franchiseId;
+            option.textContent = p.franchiseName;
+            option.dataset.productId = p.id;
+            option.dataset.price = p.unitPrice;
+            franchiseSelect.appendChild(option);
+        }
+    });
+});
+
+// When franchise is selected, fill in product_id and price, and filter stores
+document.getElementById('add_franchise').addEventListener('change', function() {
+    const selectedOption = this.options[this.selectedIndex];
+    if (selectedOption.dataset.productId) {
+        document.getElementById('add_product_id').value = selectedOption.dataset.productId;
+        const price = parseInt(selectedOption.dataset.price);
+        document.getElementById('add_unit_price').value = price;
+        document.getElementById('add_unit_price_display').value = formatNumber(price);
+    } else {
+        document.getElementById('add_product_id').value = '';
+        document.getElementById('add_unit_price').value = '';
+        document.getElementById('add_unit_price_display').value = '';
+    }
+    updateStoreDropdown();
+});
+
+// When jungsung is selected, filter stores
+document.getElementById('add_jungsung_id').addEventListener('change', function() {
+    updateStoreDropdown();
+});
+
+// Update store dropdown based on jungsung and franchise selection
+function updateStoreDropdown() {
+    const jungsungId = document.getElementById('add_jungsung_id').value;
+    const franchiseSelect = document.getElementById('add_franchise');
+    const franchiseId = franchiseSelect.value;
+    const storeSelect = document.getElementById('add_store_id');
+
+    // Clear store dropdown
+    storeSelect.innerHTML = '<option value="">선택</option>';
+
+    if (!jungsungId && !franchiseId) {
+        storeSelect.innerHTML = '<option value="">중상/프랜차이즈 먼저 선택</option>';
+        return;
+    }
+
+    // Filter stores by jungsung and/or franchise
+    storesData.filter(s => {
+        const matchJungsung = !jungsungId || s.jungsungId == jungsungId;
+        const matchFranchise = !franchiseId || s.franchiseId == franchiseId;
+        return matchJungsung && matchFranchise;
+    }).forEach(s => {
+        const option = document.createElement('option');
+        option.value = s.id;
+        option.textContent = s.name;
+        storeSelect.appendChild(option);
+    });
+}
+
+function addItem() {
+    const branchEl = document.getElementById('add_branch_id');
+    const jungsungSelect = document.getElementById('add_jungsung_id');
+    const categorySelect = document.getElementById('add_category');
+    const franchiseSelect = document.getElementById('add_franchise');
+    const storeSelect = document.getElementById('add_store_id');
+    const productId = document.getElementById('add_product_id').value;
+    const quantity = document.getElementById('add_quantity').value;
+    const unitPrice = document.getElementById('add_unit_price').value;
+    const shipmentDate = document.getElementById('add_shipment_date').value;
+
+    if (!categorySelect.value || !franchiseSelect.value || !storeSelect.value || !quantity) {
+        alert('품목, 프랜차이즈, 매장명, 수량은 필수 입력 항목입니다.');
+        return;
+    }
+
+    if (!productId || !unitPrice) {
+        alert('품목과 프랜차이즈를 선택해주세요. 단가가 자동으로 설정됩니다.');
+        return;
+    }
+
+    // Get branch info
+    let branchId, branchName;
+    if (isAdmin && branchEl.tagName === 'SELECT') {
+        branchId = branchEl.value;
+        branchName = branchId ? branchEl.options[branchEl.selectedIndex].text : '-';
+    } else {
+        branchId = userBranchId;
+        branchName = '{{ current_user.branch.name if current_user.branch else "-" }}';
+    }
+
+    // Get jungsung info
+    const jungsungId = jungsungSelect.value;
+    const jungsungName = jungsungId ? jungsungSelect.options[jungsungSelect.selectedIndex].text : '-';
+
+    // Get store info
+    const storeId = storeSelect.value;
+    const storeName = storeId ? storeSelect.options[storeSelect.selectedIndex].text : '-';
+
+    const productCategory = categorySelect.value;
+    const productName = franchiseSelect.options[franchiseSelect.selectedIndex].text;
+
+    const qty = parseInt(quantity);
+    const price = parseInt(unitPrice);
+    const total = qty * price;
+
+    // Remove empty row
+    const emptyRow = document.getElementById('emptyRow');
+    if (emptyRow) {
+        emptyRow.remove();
+    }
+
+    // Add row to table
+    const tbody = document.getElementById('itemsBody');
+    const row = document.createElement('tr');
+    row.id = `item_${itemIndex}`;
+    row.dataset.total = total;
+
+    let rowHtml = `
+        <td>
+            <input type="date" name="shipment_date[]" class="form-control form-control-sm" value="${shipmentDate}" required>
+        </td>`;
+
+    if (isAdmin) {
+        rowHtml += `
+        <td>${branchName}
+            <input type="hidden" name="branch_id[]" value="${branchId}">
+        </td>`;
+    } else {
+        rowHtml += `<input type="hidden" name="branch_id[]" value="${branchId}">`;
+    }
+
+    rowHtml += `
+        <td>${jungsungName}
+            <input type="hidden" name="jungsung_id[]" value="${jungsungId}">
+        </td>
+        <td>${productCategory}</td>
+        <td>${productName}
+            <input type="hidden" name="product_id[]" value="${productId}">
+        </td>
+        <td>${storeName}
+            <input type="hidden" name="store_id[]" value="${storeId}">
+        </td>
+        <td class="text-end">${formatNumber(qty)}
+            <input type="hidden" name="quantity[]" value="${qty}">
+        </td>
+        <td class="text-end">${formatNumber(price)}원
+            <input type="hidden" name="unit_price[]" value="${price}">
+        </td>
+        <td class="text-end">${formatNumber(total)}원</td>
+        <td>
+            <button type="button" class="btn btn-sm btn-outline-danger" onclick="removeItem(${itemIndex})">X</button>
+        </td>
+    `;
+
+    row.innerHTML = rowHtml;
+    tbody.appendChild(row);
+
+    // Update totals
+    grandTotal += total;
+    updateTotals();
+
+    // Reset form (keep branch and date for convenience)
+    categorySelect.value = '';
+    franchiseSelect.innerHTML = '<option value="">품목 먼저 선택</option>';
+    document.getElementById('add_product_id').value = '';
+    document.getElementById('add_quantity').value = '1';
+    document.getElementById('add_unit_price').value = '';
+    document.getElementById('add_unit_price_display').value = '';
+
+    itemIndex++;
+}
+
+function removeItem(index) {
+    const row = document.getElementById(`item_${index}`);
+    if (row) {
+        const total = parseInt(row.dataset.total);
+        row.remove();
+        grandTotal -= total;
+        updateTotals();
+    }
+
+    // Check if table is empty
+    const tbody = document.getElementById('itemsBody');
+    if (tbody.children.length === 0) {
+        const colspan = isAdmin ? 10 : 9;
+        tbody.innerHTML = `
+            <tr id="emptyRow">
+                <td colspan="${colspan}" class="empty-state">
+                    <p>항목을 추가해주세요.</p>
+                </td>
+            </tr>
+        `;
+    }
+}
+
+function updateTotals() {
+    document.getElementById('grandTotal').textContent = formatNumber(grandTotal) + '원';
+
+    const itemCount = document.querySelectorAll('#itemsBody tr:not(#emptyRow)').length;
+    document.getElementById('itemCount').textContent = itemCount + '개';
+    document.getElementById('submitBtn').disabled = itemCount === 0;
+}
+</script>
+{% endblock %}

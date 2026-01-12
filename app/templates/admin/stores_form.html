@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block title %}{% if store %}매장 변경{% else %}매장 등록{% endif %} - 태경바이오 ERP{% endblock %}
+
+{% block content %}
+<a href="{{ url_for('admin.franchises_detail', franchise_id=franchise.id) }}" class="back-link">&larr; {{ franchise.name }}</a>
+
+<div class="row">
+    <div class="col-lg-6">
+        <div class="card">
+            <div class="card-header">{% if store %}매장 변경{% else %}매장 등록{% endif %}</div>
+            <div class="card-body">
+                <form method="POST">
+                    <div class="row mb-3">
+                        <div class="col-md-8">
+                            <label class="form-label">매장명 <span class="required">*</span></label>
+                            <input type="text" name="name" class="form-control" value="{{ store.name if store else '' }}" required>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">코드</label>
+                            <input type="text" name="code" class="form-control" value="{{ store.code if store else '' }}" placeholder="ST001">
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">주소</label>
+                        <input type="text" name="address" class="form-control" value="{{ store.address if store else '' }}">
+                    </div>
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label">담당자명</label>
+                            <input type="text" name="contact_person" class="form-control" value="{{ store.contact_person if store else '' }}">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">연락처</label>
+                            <input type="text" name="phone" class="form-control" value="{{ store.phone if store else '' }}" placeholder="010-0000-0000">
+                        </div>
+                    </div>
+
+                    <hr class="section-divider">
+
+                    <div class="d-flex gap-2">
+                        <button type="submit" class="btn btn-primary">{% if store %}변경{% else %}등록{% endif %}</button>
+                        <a href="{{ url_for('admin.franchises_detail', franchise_id=franchise.id) }}" class="btn btn-outline-secondary">취소</a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

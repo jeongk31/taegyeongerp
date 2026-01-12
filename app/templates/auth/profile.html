@@ -1,0 +1,117 @@
+{% extends "base.html" %}
+{% block title %}내 정보 - 태경바이오 ERP{% endblock %}
+
+{% block content %}
+<div class="container" style="max-width: 800px;">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h3>
+            <i class="bi bi-person-circle text-primary"></i> 내 정보
+        </h3>
+        <a href="{{ url_for('dashboard.index') }}" class="btn btn-outline-secondary">
+            <i class="bi bi-arrow-left"></i> 돌아가기
+        </a>
+    </div>
+
+    <!-- User Information -->
+    <div class="card shadow-sm mb-4">
+        <div class="card-header bg-primary text-white">
+            <h5 class="mb-0">
+                <i class="bi bi-info-circle"></i> 기본 정보
+            </h5>
+        </div>
+        <div class="card-body">
+            <div class="row g-3">
+                <div class="col-md-6">
+                    <label class="form-label text-muted">아이디</label>
+                    <div class="form-control-plaintext fw-bold">{{ current_user.username }}</div>
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label text-muted">이름</label>
+                    <div class="form-control-plaintext fw-bold">{{ current_user.name or '-' }}</div>
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label text-muted">역할</label>
+                    <div>
+                        <span class="badge bg-{{ 'danger' if current_user.is_admin() else 'primary' if current_user.is_branch() else 'info' if current_user.is_jungsung() else 'success' if current_user.is_franchise() else 'secondary' }} fs-6 px-3 py-2">
+                            {{ current_user.get_role_display() }}
+                        </span>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label text-muted">계정 상태</label>
+                    <div>
+                        <span class="badge bg-{{ 'success' if current_user.is_active else 'danger' }} fs-6 px-3 py-2">
+                            {{ '활성' if current_user.is_active else '비활성' }}
+                        </span>
+                    </div>
+                </div>
+
+                {% if current_user.is_branch() and current_user.branch %}
+                <div class="col-md-6">
+                    <label class="form-label text-muted">소속 지사</label>
+                    <div class="form-control-plaintext fw-bold">{{ current_user.branch.name }}</div>
+                </div>
+                {% endif %}
+
+                {% if current_user.is_jungsung() and current_user.jungsung %}
+                <div class="col-md-6">
+                    <label class="form-label text-muted">중상 사업자명</label>
+                    <div class="form-control-plaintext fw-bold">{{ current_user.jungsung.business_name }}</div>
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label text-muted">소속 지사</label>
+                    <div class="form-control-plaintext fw-bold">{{ current_user.jungsung.branch.name if current_user.jungsung.branch else '-' }}</div>
+                </div>
+                {% endif %}
+
+                {% if current_user.is_franchise() and current_user.franchise %}
+                <div class="col-md-6">
+                    <label class="form-label text-muted">프랜차이즈</label>
+                    <div class="form-control-plaintext fw-bold">{{ current_user.franchise.name }}</div>
+                </div>
+                {% endif %}
+
+                <div class="col-md-6">
+                    <label class="form-label text-muted">등록일</label>
+                    <div class="form-control-plaintext">
+                        {{ current_user.created_at.strftime('%Y-%m-%d %H:%M') if current_user.created_at else '-' }}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Change Password -->
+    <div class="card shadow-sm">
+        <div class="card-header bg-warning text-dark">
+            <h5 class="mb-0">
+                <i class="bi bi-key"></i> 비밀번호 변경
+            </h5>
+        </div>
+        <div class="card-body">
+            <form method="POST" action="{{ url_for('auth.profile') }}">
+                <div class="row g-3">
+                    <div class="col-12">
+                        <label for="current_password" class="form-label">현재 비밀번호 <span class="text-danger">*</span></label>
+                        <input type="password" class="form-control" id="current_password" name="current_password" required>
+                    </div>
+                    <div class="col-md-6">
+                        <label for="new_password" class="form-label">새 비밀번호 <span class="text-danger">*</span></label>
+                        <input type="password" class="form-control" id="new_password" name="new_password" required minlength="4">
+                        <small class="form-text text-muted">최소 4자 이상</small>
+                    </div>
+                    <div class="col-md-6">
+                        <label for="confirm_password" class="form-label">새 비밀번호 확인 <span class="text-danger">*</span></label>
+                        <input type="password" class="form-control" id="confirm_password" name="confirm_password" required minlength="4">
+                    </div>
+                    <div class="col-12">
+                        <button type="submit" class="btn btn-warning">
+                            <i class="bi bi-check-circle"></i> 비밀번호 변경
+                        </button>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}

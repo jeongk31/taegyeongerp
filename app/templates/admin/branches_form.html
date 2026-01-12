@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block title %}{% if branch %}지사 변경{% else %}지사 등록{% endif %} - 태경바이오 ERP{% endblock %}
+
+{% block content %}
+<a href="{{ url_for('admin.branches_list') }}" class="back-link">&larr; 목록으로</a>
+
+<div class="row">
+    <div class="col-lg-6">
+        <div class="card">
+            <div class="card-header">{% if branch %}지사 변경{% else %}지사 등록{% endif %}</div>
+            <div class="card-body">
+                <form method="POST">
+                    <div class="mb-3">
+                        <label class="form-label">지사명 <span class="required">*</span></label>
+                        <input type="text" name="name" class="form-control" value="{{ branch.name if branch else '' }}" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">담당자명</label>
+                        <input type="text" name="contact_person" class="form-control" value="{{ branch.contact_person if branch else '' }}">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">연락처</label>
+                        <input type="text" name="phone" class="form-control" value="{{ branch.phone if branch else '' }}" placeholder="010-0000-0000">
+                    </div>
+
+                    <hr class="section-divider">
+
+                    <div class="d-flex gap-2">
+                        <button type="submit" class="btn btn-primary">{% if branch %}변경{% else %}등록{% endif %}</button>
+                        <a href="{{ url_for('admin.branches_list') }}" class="btn btn-outline-secondary">취소</a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,445 @@
+{% extends "base.html" %}
+{% block title %}재고현황 - 태경바이오 ERP{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h2>재고현황</h2>
+</div>
+
+<!-- 기간 선택 + 전체 재고 요약 -->
+<div class="card mb-4">
+    <div class="card-body py-2">
+        <form method="GET" action="{{ url_for('admin.inventory_status') }}" id="periodForm">
+            <div class="row g-2 align-items-center">
+                <!-- 기간 유형 선택 -->
+                <div class="col-auto">
+                    <div class="form-check form-check-inline mb-0">
+                        <input class="form-check-input" type="radio" name="period_type" id="periodMonth" value="month" {% if period_type == 'month' %}checked{% endif %}>
+                        <label class="form-check-label" for="periodMonth">월별</label>
+                    </div>
+                    <div class="form-check form-check-inline mb-0">
+                        <input class="form-check-input" type="radio" name="period_type" id="periodRange" value="range" {% if period_type == 'range' %}checked{% endif %}>
+                        <label class="form-check-label" for="periodRange">기간</label>
+                    </div>
+                </div>
+
+                <!-- 월별 선택 -->
+                <div class="col-auto" id="monthSelector" {% if period_type == 'range' %}style="display: none;"{% endif %}>
+                    <div class="d-flex gap-1">
+                        <select name="year" class="form-select form-select-sm" style="width: 90px;">
+                            {% for y in range(current_year - 2, current_year + 2) %}
+                            <option value="{{ y }}" {% if y == year %}selected{% endif %}>{{ y }}년</option>
+                            {% endfor %}
+                        </select>
+                        <select name="month" class="form-select form-select-sm" style="width: 80px;">
+                            {% for m in range(1, 13) %}
+                            <option value="{{ m }}" {% if m == month %}selected{% endif %}>{{ m }}월</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                </div>
+
+                <!-- 기간 선택 -->
+                <div class="col-auto" id="rangeSelector" {% if period_type == 'month' %}style="display: none;"{% endif %}>
+                    <div class="d-flex align-items-center gap-1">
+                        <input type="date" name="date_from" class="form-control form-control-sm" style="width: 130px;" value="{{ filters.date_from or '' }}">
+                        <span>~</span>
+                        <input type="date" name="date_to" class="form-control form-control-sm" style="width: 130px;" value="{{ filters.date_to or '' }}">
+                    </div>
+                </div>
+
+                <div class="col-auto">
+                    <button type="submit" class="btn btn-primary btn-sm">조회</button>
+                </div>
+
+                <!-- 구분선 -->
+                <div class="col-auto">
+                    <div class="vr" style="height: 30px;"></div>
+                </div>
+
+                <!-- 전체 재고 요약 -->
+                <div class="col-auto">
+                    <span class="text-muted small me-2">입고</span>
+                    <span class="fw-bold">{{ '{:,}'.format(total_stats.stockin) }}</span>
+                </div>
+                <div class="col-auto">
+                    <span class="text-muted small me-2">출고</span>
+                    <span class="fw-bold">{{ '{:,}'.format(total_stats.shipment) }}</span>
+                </div>
+                <div class="col-auto">
+                    <span class="text-muted small me-2">재고</span>
+                    <span class="fw-bold text-warning">{{ '{:,}'.format(total_stats.stock) }}</span>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- 프랜차이즈별검색보기 (Franchise Search) -->
+<div class="card mb-4">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <span>프랜차이즈별검색보기</span>
+        <div class="export-buttons no-print">
+            <button class="btn btn-success btn-sm export-btn" onclick="exportTableToExcel('franchiseInventoryTable', '프랜차이즈별재고')">
+                <i class="bi bi-file-earmark-excel"></i> Excel
+            </button>
+            <button class="btn btn-danger btn-sm export-btn" onclick="exportTableToPDF('franchiseInventoryTable', '프랜차이즈별재고')">
+                <i class="bi bi-file-earmark-pdf"></i> PDF
+            </button>
+            <button class="btn btn-secondary btn-sm export-btn" onclick="printTable()">
+                <i class="bi bi-printer"></i> 인쇄
+            </button>
+        </div>
+    </div>
+    <div class="card-body">
+        <form method="GET" action="{{ url_for('admin.inventory_status') }}" class="row g-2 align-items-end mb-3" style="font-size: 0.85rem;">
+            <input type="hidden" name="period_type" value="{{ period_type }}">
+            <input type="hidden" name="year" value="{{ year }}">
+            <input type="hidden" name="month" value="{{ month }}">
+            <input type="hidden" name="date_from" value="{{ filters.date_from or '' }}">
+            <input type="hidden" name="date_to" value="{{ filters.date_to or '' }}">
+            <div class="col-md-2">
+                <label class="form-label mb-1">프랜차이즈</label>
+                <select name="franchise_id" class="form-select form-select-sm">
+                    <option value="">선택</option>
+                    {% for franchise in franchises %}
+                    <option value="{{ franchise.id }}" {% if filters.franchise_id == franchise.id %}selected{% endif %}>{{ franchise.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label mb-1">품목</label>
+                <select name="franchise_category" class="form-select form-select-sm">
+                    <option value="">전체</option>
+                    <option value="식용유" {% if filters.franchise_category == '식용유' %}selected{% endif %}>식용유</option>
+                    <option value="밀가루" {% if filters.franchise_category == '밀가루' %}selected{% endif %}>밀가루</option>
+                    <option value="폐유" {% if filters.franchise_category == '폐유' %}selected{% endif %}>폐유</option>
+                </select>
+            </div>
+            <div class="col-auto">
+                <button type="submit" class="btn btn-sm btn-primary">검색</button>
+            </div>
+        </form>
+        {% if franchise_groups %}
+        <div class="table-responsive">
+            <table id="franchiseInventoryTable" class="table table-sm table-bordered mb-0" style="font-size: 0.85rem;">
+                <thead class="table-light">
+                    <tr>
+                        <th>프랜차이즈</th>
+                        <th>품목</th>
+                        <th class="text-end">입고수량</th>
+                        <th class="text-end">출고수량</th>
+                        <th class="text-end table-warning">재고수량</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for group in franchise_groups %}
+                    {% for product_stat in group.products %}
+                    <tr>
+                        {% if loop.first %}
+                        <td rowspan="{{ group.products|length }}" class="align-middle">{{ group.franchise.name if group.franchise else '-' }}</td>
+                        {% endif %}
+                        <td>{{ product_stat.product.category }}</td>
+                        <td class="text-end">{{ '{:,}'.format(product_stat.stockin) }}</td>
+                        <td class="text-end">{{ '{:,}'.format(product_stat.shipment) }}</td>
+                        <td class="text-end table-warning">{{ '{:,}'.format(product_stat.stock) }}</td>
+                    </tr>
+                    {% endfor %}
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <p class="text-muted text-center mb-0">프랜차이즈를 선택해주세요.</p>
+        {% endif %}
+    </div>
+</div>
+
+<!-- 입고사 월별검색 (Supplier Monthly Search) -->
+<div class="card mb-4">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <span>입고사 검색</span>
+        <div class="export-buttons no-print">
+            <button class="btn btn-success btn-sm export-btn" onclick="exportTableToExcel('supplierInventoryTable', '입고사별재고')">
+                <i class="bi bi-file-earmark-excel"></i> Excel
+            </button>
+            <button class="btn btn-danger btn-sm export-btn" onclick="exportTableToPDF('supplierInventoryTable', '입고사별재고')">
+                <i class="bi bi-file-earmark-pdf"></i> PDF
+            </button>
+            <button class="btn btn-secondary btn-sm export-btn" onclick="printTable()">
+                <i class="bi bi-printer"></i> 인쇄
+            </button>
+        </div>
+    </div>
+    <div class="card-body">
+        <form method="GET" action="{{ url_for('admin.inventory_status') }}" class="row g-2 align-items-end mb-3" style="font-size: 0.85rem;">
+            <input type="hidden" name="period_type" value="{{ period_type }}">
+            <input type="hidden" name="year" value="{{ year }}">
+            <input type="hidden" name="month" value="{{ month }}">
+            <input type="hidden" name="date_from" value="{{ filters.date_from or '' }}">
+            <input type="hidden" name="date_to" value="{{ filters.date_to or '' }}">
+            <div class="col-md-2">
+                <label class="form-label mb-1">입고사</label>
+                <select name="supplier_id" class="form-select form-select-sm">
+                    <option value="">선택</option>
+                    {% for supplier in suppliers %}
+                    <option value="{{ supplier.id }}" {% if filters.supplier_id == supplier.id %}selected{% endif %}>{{ supplier.company_name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label mb-1">품목</label>
+                <select name="supplier_category" class="form-select form-select-sm">
+                    <option value="">전체</option>
+                    <option value="식용유" {% if filters.supplier_category == '식용유' %}selected{% endif %}>식용유</option>
+                    <option value="밀가루" {% if filters.supplier_category == '밀가루' %}selected{% endif %}>밀가루</option>
+                    <option value="폐유" {% if filters.supplier_category == '폐유' %}selected{% endif %}>폐유</option>
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label mb-1">프랜차이즈</label>
+                <select name="supplier_franchise_id" class="form-select form-select-sm">
+                    <option value="">전체</option>
+                    {% for franchise in franchises %}
+                    <option value="{{ franchise.id }}" {% if filters.supplier_franchise_id == franchise.id %}selected{% endif %}>{{ franchise.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-auto">
+                <button type="submit" class="btn btn-sm btn-primary">검색</button>
+            </div>
+        </form>
+        {% if supplier_stats %}
+        <div class="table-responsive">
+            <table id="supplierInventoryTable" class="table table-sm table-bordered mb-0" style="font-size: 0.85rem;">
+                <thead class="table-light">
+                    <tr>
+                        <th>입고사</th>
+                        <th>프랜차이즈</th>
+                        <th>품목</th>
+                        <th class="text-end">입고수량</th>
+                        <th class="text-end">출고수량</th>
+                        <th class="text-end table-warning">재고수량</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for stat in supplier_stats %}
+                    <tr>
+                        <td>{{ stat.supplier.company_name if stat.supplier else '-' }}</td>
+                        <td>{{ stat.franchise.name if stat.franchise else '-' }}</td>
+                        <td>{{ stat.product.category }}</td>
+                        <td class="text-end">{{ '{:,}'.format(stat.stockin) }}</td>
+                        <td class="text-end">{{ '{:,}'.format(stat.shipment) }}</td>
+                        <td class="text-end table-warning">{{ '{:,}'.format(stat.stock) }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <p class="text-muted text-center mb-0">입고사를 선택해주세요.</p>
+        {% endif %}
+    </div>
+</div>
+
+{% if current_user.is_admin() %}
+<!-- 지사별검색 (Branch Search) - Admin only -->
+<div class="card mb-4">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <span>지사별검색</span>
+        <div class="export-buttons no-print">
+            <button class="btn btn-success btn-sm export-btn" onclick="exportTableToExcel('branchInventoryTable', '지사별재고')">
+                <i class="bi bi-file-earmark-excel"></i> Excel
+            </button>
+            <button class="btn btn-danger btn-sm export-btn" onclick="exportTableToPDF('branchInventoryTable', '지사별재고')">
+                <i class="bi bi-file-earmark-pdf"></i> PDF
+            </button>
+            <button class="btn btn-secondary btn-sm export-btn" onclick="printTable()">
+                <i class="bi bi-printer"></i> 인쇄
+            </button>
+        </div>
+    </div>
+    <div class="card-body">
+        <form method="GET" action="{{ url_for('admin.inventory_status') }}" class="row g-2 align-items-end mb-3" style="font-size: 0.85rem;">
+            <input type="hidden" name="period_type" value="{{ period_type }}">
+            <input type="hidden" name="year" value="{{ year }}">
+            <input type="hidden" name="month" value="{{ month }}">
+            <input type="hidden" name="date_from" value="{{ filters.date_from or '' }}">
+            <input type="hidden" name="date_to" value="{{ filters.date_to or '' }}">
+            <div class="col-md-2">
+                <label class="form-label mb-1">지사</label>
+                <select name="branch_id" class="form-select form-select-sm">
+                    <option value="">선택</option>
+                    {% for branch in branches %}
+                    <option value="{{ branch.id }}" {% if filters.branch_id == branch.id %}selected{% endif %}>{{ branch.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label mb-1">품목</label>
+                <select name="branch_category" class="form-select form-select-sm">
+                    <option value="">전체</option>
+                    <option value="식용유" {% if filters.branch_category == '식용유' %}selected{% endif %}>식용유</option>
+                    <option value="밀가루" {% if filters.branch_category == '밀가루' %}selected{% endif %}>밀가루</option>
+                    <option value="폐유" {% if filters.branch_category == '폐유' %}selected{% endif %}>폐유</option>
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label mb-1">프랜차이즈</label>
+                <select name="branch_franchise_id" class="form-select form-select-sm">
+                    <option value="">전체</option>
+                    {% for franchise in franchises %}
+                    <option value="{{ franchise.id }}" {% if filters.branch_franchise_id == franchise.id %}selected{% endif %}>{{ franchise.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-auto">
+                <button type="submit" class="btn btn-sm btn-primary">검색</button>
+            </div>
+        </form>
+        {% if branch_stats %}
+        <div class="table-responsive">
+            <table id="branchInventoryTable" class="table table-sm table-bordered mb-0" style="font-size: 0.85rem;">
+                <thead class="table-light">
+                    <tr>
+                        <th>지사</th>
+                        <th>프랜차이즈</th>
+                        <th>품목</th>
+                        <th class="text-end">입고수량</th>
+                        <th class="text-end">출고수량</th>
+                        <th class="text-end table-warning">재고수량</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for stat in branch_stats %}
+                    <tr>
+                        <td>{{ stat.branch.name if stat.branch else '-' }}</td>
+                        <td>{{ stat.franchise.name if stat.franchise else '-' }}</td>
+                        <td>{{ stat.product.category }}</td>
+                        <td class="text-end">{{ '{:,}'.format(stat.stockin) }}</td>
+                        <td class="text-end">{{ '{:,}'.format(stat.shipment) }}</td>
+                        <td class="text-end table-warning">{{ '{:,}'.format(stat.stock) }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <p class="text-muted text-center mb-0">지사를 선택해주세요.</p>
+        {% endif %}
+    </div>
+</div>
+{% endif %}
+
+<!-- 중상 월별검색 (Jungsung Monthly Search) -->
+<div class="card mb-4">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <span>중상 검색</span>
+        <div class="export-buttons no-print">
+            <button class="btn btn-success btn-sm export-btn" onclick="exportTableToExcel('jungsungInventoryTable', '중상별재고')">
+                <i class="bi bi-file-earmark-excel"></i> Excel
+            </button>
+            <button class="btn btn-danger btn-sm export-btn" onclick="exportTableToPDF('jungsungInventoryTable', '중상별재고')">
+                <i class="bi bi-file-earmark-pdf"></i> PDF
+            </button>
+            <button class="btn btn-secondary btn-sm export-btn" onclick="printTable()">
+                <i class="bi bi-printer"></i> 인쇄
+            </button>
+        </div>
+    </div>
+    <div class="card-body">
+        <form method="GET" action="{{ url_for('admin.inventory_status') }}" class="row g-2 align-items-end mb-3" style="font-size: 0.85rem;">
+            <input type="hidden" name="period_type" value="{{ period_type }}">
+            <input type="hidden" name="year" value="{{ year }}">
+            <input type="hidden" name="month" value="{{ month }}">
+            <input type="hidden" name="date_from" value="{{ filters.date_from or '' }}">
+            <input type="hidden" name="date_to" value="{{ filters.date_to or '' }}">
+            <div class="col-md-2">
+                <label class="form-label mb-1">중상</label>
+                <select name="jungsung_id" class="form-select form-select-sm">
+                    <option value="">선택</option>
+                    {% for jungsung in jungsungs %}
+                    <option value="{{ jungsung.id }}" {% if filters.jungsung_id == jungsung.id %}selected{% endif %}>{{ jungsung.business_name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label mb-1">품목</label>
+                <select name="jungsung_category" class="form-select form-select-sm">
+                    <option value="">전체</option>
+                    <option value="식용유" {% if filters.jungsung_category == '식용유' %}selected{% endif %}>식용유</option>
+                    <option value="밀가루" {% if filters.jungsung_category == '밀가루' %}selected{% endif %}>밀가루</option>
+                    <option value="폐유" {% if filters.jungsung_category == '폐유' %}selected{% endif %}>폐유</option>
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label mb-1">프랜차이즈</label>
+                <select name="jungsung_franchise_id" class="form-select form-select-sm">
+                    <option value="">전체</option>
+                    {% for franchise in franchises %}
+                    <option value="{{ franchise.id }}" {% if filters.jungsung_franchise_id == franchise.id %}selected{% endif %}>{{ franchise.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-auto">
+                <button type="submit" class="btn btn-sm btn-primary">검색</button>
+            </div>
+        </form>
+        {% if jungsung_stats %}
+        <div class="table-responsive">
+            <table id="jungsungInventoryTable" class="table table-sm table-bordered mb-0" style="font-size: 0.85rem;">
+                <thead class="table-light">
+                    <tr>
+                        <th>중상</th>
+                        <th>프랜차이즈</th>
+                        <th>품목</th>
+                        <th class="text-end">출고수량</th>
+                        <th class="text-end">ERP등록</th>
+                        <th class="text-end table-warning">ERP미등록</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for stat in jungsung_stats %}
+                    <tr>
+                        <td>{{ stat.jungsung.business_name if stat.jungsung else '-' }}</td>
+                        <td>{{ stat.franchise.name if stat.franchise else '-' }}</td>
+                        <td>{{ stat.product.category }}</td>
+                        <td class="text-end">{{ '{:,}'.format(stat.shipment) }}</td>
+                        <td class="text-end">{{ '{:,}'.format(stat.erp_registered) }}</td>
+                        <td class="text-end table-warning">{{ '{:,}'.format(stat.erp_unregistered) }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <p class="text-muted text-center mb-0">중상을 선택해주세요.</p>
+        {% endif %}
+        {% if jungsung_stats %}
+        <div class="mt-2">
+            <small class="text-muted">* 폐유는 ERP 등록 수량에 포함되지 않습니다.</small>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// 조회 유형 변경 시 표시 토글
+document.querySelectorAll('input[name="period_type"]').forEach(function(radio) {
+    radio.addEventListener('change', function() {
+        const monthSelector = document.getElementById('monthSelector');
+        const rangeSelector = document.getElementById('rangeSelector');
+
+        if (this.value === 'month') {
+            monthSelector.style.display = 'block';
+            rangeSelector.style.display = 'none';
+        } else {
+            monthSelector.style.display = 'none';
+            rangeSelector.style.display = 'block';
+        }
+    });
+});
+</script>
+{% endblock %}

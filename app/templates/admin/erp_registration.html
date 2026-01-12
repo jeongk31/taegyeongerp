@@ -1,0 +1,193 @@
+{% extends "base.html" %}
+{% block title %}ERP 등록 - 태경바이오 ERP{% endblock %}
+
+{% block extra_css %}
+<style>
+    .erp-table {
+        font-size: 0.85rem;
+    }
+    .erp-table th, .erp-table td {
+        padding: 0.4rem 0.5rem;
+        vertical-align: middle;
+    }
+    .erp-table input[type="number"] {
+        width: 70px;
+        padding: 0.25rem 0.5rem;
+        font-size: 0.85rem;
+    }
+    .erp-table .btn-complete {
+        padding: 0.25rem 0.5rem;
+        font-size: 0.75rem;
+    }
+    .franchise-header {
+        background-color: #e9ecef;
+        font-weight: bold;
+    }
+    .completed-row {
+        background-color: #d4edda;
+    }
+    .date-picker-wrapper {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header d-flex justify-content-between align-items-center">
+    <h2>ERP 등록</h2>
+    <div class="date-picker-wrapper">
+        <button type="button" class="btn btn-sm btn-outline-secondary" onclick="goYesterday()" title="어제">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
+                <path fill-rule="evenodd" d="M11.354 1.646a.5.5 0 0 1 0 .708L5.707 8l5.647 5.646a.5.5 0 0 1-.708.708l-6-6a.5.5 0 0 1 0-.708l6-6a.5.5 0 0 1 .708 0z"/>
+            </svg>
+        </button>
+        <input type="date" id="registration-date" class="form-control form-control-sm" style="width: 150px;"
+               value="{{ registration_date.strftime('%Y-%m-%d') }}" onchange="changeDate()">
+        <button type="button" class="btn btn-sm btn-outline-secondary" onclick="goTomorrow()" title="내일">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
+                <path fill-rule="evenodd" d="M4.646 1.646a.5.5 0 0 1 .708 0l6 6a.5.5 0 0 1 0 .708l-6 6a.5.5 0 0 1-.708-.708L10.293 8 4.646 2.354a.5.5 0 0 1 0-.708z"/>
+            </svg>
+        </button>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <span>{{ jungsung.contact_person or jungsung.business_name }} 담당 매장</span>
+        <span class="text-muted">{{ registration_date.strftime('%Y년 %m월 %d일') }}</span>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-sm table-bordered erp-table mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>프랜차이즈</th>
+                        <th>매장명</th>
+                        {% for cat in categories %}
+                        <th class="text-center" style="width: 80px;">{{ cat.name }}</th>
+                        {% endfor %}
+                        <th class="text-center" style="width: 80px;">완료</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for franchise_id, group in franchise_groups.items() %}
+                    {% for store in group.stores %}
+                    {% set reg = reg_by_store.get(store.id) %}
+                    {% set qty_dict = reg.get_category_quantities() if reg else {} %}
+                    <tr class="{% if reg and reg.is_completed %}completed-row{% endif %}" data-store-id="{{ store.id }}">
+                        {% if loop.first %}
+                        <td rowspan="{{ group.stores|length }}" class="franchise-header align-middle">
+                            {{ group.franchise.name if group.franchise else '-' }}
+                        </td>
+                        {% endif %}
+                        <td>{{ store.name }}</td>
+                        {% for cat in categories %}
+                        <td class="text-center">
+                            <input type="number" class="form-control form-control-sm category-input"
+                                   value="{{ qty_dict.get(cat.name, '') }}"
+                                   data-store-id="{{ store.id }}"
+                                   data-category="{{ cat.name }}"
+                                   min="0" step="1">
+                        </td>
+                        {% endfor %}
+                        <td class="text-center">
+                            <button type="button" class="btn btn-sm {% if reg and reg.is_completed %}btn-success{% else %}btn-outline-primary{% endif %} btn-complete"
+                                    data-store-id="{{ store.id }}"
+                                    onclick="completeEntry({{ store.id }})">
+                                {% if reg and reg.is_completed %}저장됨{% else %}완료{% endif %}
+                            </button>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                    {% else %}
+                    <tr>
+                        <td colspan="{{ categories|length + 3 }}" class="text-center text-muted py-3">
+                            담당 매장이 없습니다.
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    const registrationDate = '{{ registration_date.strftime('%Y-%m-%d') }}';
+
+    function changeDate() {
+        const newDate = document.getElementById('registration-date').value;
+        if (newDate) {
+            window.location.href = '{{ url_for('admin.erp_registration') }}?date=' + newDate;
+        }
+    }
+
+    function goYesterday() {
+        const currentDate = new Date(registrationDate);
+        currentDate.setDate(currentDate.getDate() - 1);
+        const newDate = currentDate.toISOString().split('T')[0];
+        window.location.href = '{{ url_for('admin.erp_registration') }}?date=' + newDate;
+    }
+
+    function goTomorrow() {
+        const currentDate = new Date(registrationDate);
+        currentDate.setDate(currentDate.getDate() + 1);
+        const newDate = currentDate.toISOString().split('T')[0];
+        window.location.href = '{{ url_for('admin.erp_registration') }}?date=' + newDate;
+    }
+
+    // Get category quantities from a row
+    function getCategoryQuantities(row) {
+        const quantities = {};
+        row.querySelectorAll('.category-input').forEach(input => {
+            const category = input.dataset.category;
+            const value = parseInt(input.value) || 0;
+            if (value > 0) {
+                quantities[category] = value;
+            }
+        });
+        return quantities;
+    }
+
+    function completeEntry(storeId) {
+        const row = document.querySelector(`tr[data-store-id="${storeId}"]`);
+        const completeBtn = row.querySelector('.btn-complete');
+        const quantities = getCategoryQuantities(row);
+
+        const data = {
+            date: registrationDate,
+            store_id: parseInt(storeId),
+            category_quantities: quantities,
+            is_return: false
+        };
+
+        fetch('{{ url_for('admin.erp_registration_complete') }}', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(data)
+        })
+        .then(response => response.json())
+        .then(result => {
+            if (result.success) {
+                row.classList.add('completed-row');
+                completeBtn.textContent = '저장됨';
+                completeBtn.classList.remove('btn-outline-primary');
+                completeBtn.classList.add('btn-success');
+            } else {
+                alert(result.message);
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('오류가 발생했습니다.');
+        });
+    }
+</script>
+{% endblock %}

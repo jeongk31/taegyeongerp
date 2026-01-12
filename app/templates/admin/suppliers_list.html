@@ -1,0 +1,163 @@
+{% extends "base.html" %}
+{% block title %}제품입고업체 - 태경바이오 ERP{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h2>제품입고업체</h2>
+    <div class="d-flex gap-2 align-items-center">
+        <div class="export-buttons no-print">
+            <button class="btn btn-success btn-sm export-btn" onclick="exportTableToExcel('suppliersTable', '제품입고업체목록')">
+                <i class="bi bi-file-earmark-excel"></i> Excel
+            </button>
+            <button class="btn btn-danger btn-sm export-btn" onclick="exportTableToPDF('suppliersTable', '제품입고업체목록')">
+                <i class="bi bi-file-earmark-pdf"></i> PDF
+            </button>
+            <button class="btn btn-secondary btn-sm export-btn" onclick="printTable()">
+                <i class="bi bi-printer"></i> 인쇄
+            </button>
+        </div>
+        <select class="form-select form-select-sm" style="width: auto;" onchange="sortTable(this.value)">
+            <option value="id-asc" {% if sort == 'id' and order == 'asc' %}selected{% endif %}>ID ↑</option>
+            <option value="id-desc" {% if sort == 'id' and order == 'desc' %}selected{% endif %}>ID ↓</option>
+            <option value="company_name-asc" {% if sort == 'company_name' and order == 'asc' %}selected{% endif %}>회사명 ↑</option>
+            <option value="company_name-desc" {% if sort == 'company_name' and order == 'desc' %}selected{% endif %}>회사명 ↓</option>
+            <option value="created_at-desc" {% if sort == 'created_at' and order == 'desc' %}selected{% endif %}>최신순</option>
+            <option value="created_at-asc" {% if sort == 'created_at' and order == 'asc' %}selected{% endif %}>오래된순</option>
+        </select>
+        <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#supplierModal" onclick="openAddModal()">등록하기</button>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table id="suppliersTable" class="table">
+                <thead>
+                    <tr>
+                        <th style="width: 60px;">ID</th>
+                        <th>회사명</th>
+                        <th>담당자</th>
+                        <th>연락처</th>
+                        <th>등록일</th>
+                        <th style="width: 80px;"></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for supplier in suppliers %}
+                    <tr>
+                        <td class="id-cell">{{ supplier.id }}</td>
+                        <td>{{ supplier.company_name }}</td>
+                        <td>{{ supplier.contact_person or '-' }}</td>
+                        <td>{{ supplier.phone or '-' }}</td>
+                        <td>{{ supplier.created_at.strftime('%Y-%m-%d') }}</td>
+                        <td>
+                            <div class="d-flex gap-1">
+                                <button type="button" class="btn btn-sm btn-outline-secondary" title="변경" onclick='openEditModal({{ supplier.id }}, {{ supplier.company_name|tojson }}, {{ (supplier.contact_person or "")|tojson }}, {{ (supplier.phone or "")|tojson }})'>
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" viewBox="0 0 16 16"><path d="M12.146.146a.5.5 0 0 1 .708 0l3 3a.5.5 0 0 1 0 .708l-10 10a.5.5 0 0 1-.168.11l-5 2a.5.5 0 0 1-.65-.65l2-5a.5.5 0 0 1 .11-.168l10-10zM11.207 2.5 13.5 4.793 14.793 3.5 12.5 1.207 11.207 2.5zm1.586 3L10.5 3.207 4 9.707V10h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.5h.293l6.5-6.5zm-9.761 5.175-.106.106-1.528 3.821 3.821-1.528.106-.106A.5.5 0 0 1 5 12.5V12h-.5a.5.5 0 0 1-.5-.5V11h-.5a.5.5 0 0 1-.468-.325z"/></svg>
+                                </button>
+                                <form method="POST" action="{{ url_for('admin.suppliers_delete', id=supplier.id) }}" style="display: inline;" onsubmit="return confirm('정말 삭제하시겠습니까?')">
+                                    <button type="submit" class="btn btn-sm btn-outline-danger" title="삭제">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" viewBox="0 0 16 16"><path d="M5.5 5.5A.5.5 0 0 1 6 6v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm2.5 0a.5.5 0 0 1 .5.5v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm3 .5a.5.5 0 0 0-1 0v6a.5.5 0 0 0 1 0V6z"/><path fill-rule="evenodd" d="M14.5 3a1 1 0 0 1-1 1H13v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V4h-.5a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1H6a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1h3.5a1 1 0 0 1 1 1v1zM4.118 4 4 4.059V13a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1V4.059L11.882 4H4.118zM2.5 3V2h11v1h-11z"/></svg>
+                                    </button>
+                                </form>
+                            </div>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="6" class="empty-state">
+                            <p>등록된 제품입고업체가 없습니다.</p>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Supplier Modal -->
+<div class="modal fade" id="supplierModal" tabindex="-1" aria-labelledby="supplierModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="supplierModalLabel">제품입고업체 등록</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form id="supplierForm" method="POST">
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">회사명 <span class="required">*</span></label>
+                        <input type="text" name="company_name" id="modal_company_name" class="form-control" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">담당자</label>
+                        <input type="text" name="contact_person" id="modal_contact_person" class="form-control">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">연락처</label>
+                        <input type="text" name="phone" id="modal_phone" class="form-control phone-input" placeholder="010-1234-5678" maxlength="13">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">취소</button>
+                    <button type="submit" class="btn btn-primary" id="modalSubmitBtn">등록하기</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const addUrl = "{{ url_for('admin.suppliers_add') }}";
+
+function sortTable(value) {
+    const [sort, order] = value.split('-');
+    window.location.href = `{{ url_for('admin.suppliers_list') }}?sort=${sort}&order=${order}`;
+}
+
+function openAddModal() {
+    document.getElementById('supplierModalLabel').textContent = '제품입고업체 등록';
+    document.getElementById('modalSubmitBtn').textContent = '등록하기';
+    document.getElementById('supplierForm').action = addUrl;
+
+    // Clear form
+    document.getElementById('modal_company_name').value = '';
+    document.getElementById('modal_contact_person').value = '';
+    document.getElementById('modal_phone').value = '';
+}
+
+function openEditModal(supplierId, companyName, contactPerson, phone) {
+    document.getElementById('supplierModalLabel').textContent = '제품입고업체 변경';
+    document.getElementById('modalSubmitBtn').textContent = '변경하기';
+    document.getElementById('supplierForm').action = `/admin/suppliers/${supplierId}/edit`;
+
+    // Fill form
+    document.getElementById('modal_company_name').value = companyName;
+    document.getElementById('modal_contact_person').value = contactPerson;
+    document.getElementById('modal_phone').value = phone;
+
+    // Show modal
+    const modal = new bootstrap.Modal(document.getElementById('supplierModal'));
+    modal.show();
+}
+
+// Auto-format phone number with hyphens
+document.querySelectorAll('.phone-input').forEach(function(input) {
+    input.addEventListener('input', function(e) {
+        let value = e.target.value.replace(/\D/g, '');
+        if (value.length > 11) value = value.slice(0, 11);
+
+        if (value.length <= 3) {
+            e.target.value = value;
+        } else if (value.length <= 7) {
+            e.target.value = value.slice(0, 3) + '-' + value.slice(3);
+        } else {
+            e.target.value = value.slice(0, 3) + '-' + value.slice(3, 7) + '-' + value.slice(7);
+        }
+    });
+});
+</script>
+{% endblock %}

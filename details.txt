@@ -1,0 +1,3 @@
+pw: ERPerp123!@#
+link: https://supabase.com/dashboard/project/wlonqjflocteliopsmmn
+anon public api key: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Indsb25xamZsb2N0ZWxpb3BzbW1uIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjY2NDk4NDcsImV4cCI6MjA4MjIyNTg0N30.9MNRgIYOpNlRgZyzIIQHQFjH4iP_FEmTBL_FuAY_Cm4

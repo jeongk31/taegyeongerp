@@ -1,0 +1,132 @@
+{% extends "base.html" %}
+{% block title %}ERP 등록수량 체크 - 태경바이오 ERP{% endblock %}
+
+{% block extra_css %}
+<style>
+    .tracking-table {
+        font-size: 0.85rem;
+    }
+    .tracking-table th, .tracking-table td {
+        padding: 0.4rem 0.5rem;
+        vertical-align: middle;
+    }
+    .tracking-table .col-shipment {
+        background-color: #fff;
+    }
+    .tracking-table .col-registered {
+        background-color: #d4edda;
+    }
+    .tracking-table .col-unregistered {
+        background-color: #fff3cd;
+    }
+    .tracking-table tfoot {
+        font-weight: bold;
+        background-color: #e9ecef;
+    }
+    .franchise-header {
+        background-color: #f8f9fa;
+        font-weight: 500;
+    }
+    .unregistered-highlight {
+        color: #dc3545;
+        font-weight: bold;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header d-flex justify-content-between align-items-center">
+    <h2>ERP 등록수량 체크</h2>
+</div>
+
+<!-- Date Selector -->
+<div class="card mb-4">
+    <div class="card-body py-2">
+        <form method="GET" action="{{ url_for('admin.erp_tracking_jungsung') }}" class="row g-2 align-items-center">
+            <div class="col-auto">
+                <label class="form-label mb-0">날짜별 보기 (클릭달력)</label>
+            </div>
+            <div class="col-auto">
+                <input type="date" name="date" class="form-control form-control-sm" style="width: 150px;"
+                       value="{{ filter_date.strftime('%Y-%m-%d') }}" onchange="this.form.submit()">
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Tracking Table -->
+<div class="card">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <span>{{ jungsung.contact_person or jungsung.business_name }} - {{ filter_date.strftime('%Y년 %m월 %d일') }}</span>
+        <div class="export-buttons no-print">
+            <button class="btn btn-success btn-sm export-btn" onclick="exportTableToExcel('jungsungTrackingTable', 'ERP등록체크_{{ filter_date.strftime('%Y%m%d') }}')">
+                <i class="bi bi-file-earmark-excel"></i> Excel
+            </button>
+            <button class="btn btn-danger btn-sm export-btn" onclick="exportTableToPDF('jungsungTrackingTable', 'ERP등록체크_{{ filter_date.strftime('%Y%m%d') }}')">
+                <i class="bi bi-file-earmark-pdf"></i> PDF
+            </button>
+            <button class="btn btn-secondary btn-sm export-btn" onclick="printTable()">
+                <i class="bi bi-printer"></i> 인쇄
+            </button>
+        </div>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table id="jungsungTrackingTable" class="table table-sm table-bordered tracking-table mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>프랜차이즈</th>
+                        <th>매장명</th>
+                        <th class="text-end col-shipment">출고</th>
+                        <th class="text-end col-registered">ERP등록</th>
+                        <th class="text-end col-unregistered">미등록</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for group in franchise_groups %}
+                    {% for store_data in group.stores %}
+                    <tr>
+                        {% if loop.first %}
+                        <td rowspan="{{ group.stores|length }}" class="franchise-header align-middle">
+                            {{ group.franchise.name if group.franchise else '-' }}
+                        </td>
+                        {% endif %}
+                        <td>{{ store_data.store.name }}</td>
+                        <td class="text-end col-shipment">{{ store_data.shipment }}</td>
+                        <td class="text-end col-registered">{{ store_data.erp_registered }}</td>
+                        <td class="text-end col-unregistered {% if store_data.unregistered > 0 %}unregistered-highlight{% endif %}">
+                            {{ store_data.unregistered }}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                    {% else %}
+                    <tr>
+                        <td colspan="5" class="text-center text-muted py-3">
+                            담당 매장이 없습니다.
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+                {% if franchise_groups %}
+                <tfoot>
+                    <tr>
+                        <td colspan="2" class="text-end">합계</td>
+                        <td class="text-end">{{ total_shipment }}</td>
+                        <td class="text-end">{{ total_erp_registered }}</td>
+                        <td class="text-end {% if total_unregistered > 0 %}unregistered-highlight{% endif %}">{{ total_unregistered }}</td>
+                    </tr>
+                </tfoot>
+                {% endif %}
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Info Note -->
+<div class="mt-3">
+    <small class="text-muted">
+        * 폐유는 ERP 등록 수량에 포함되지 않습니다.
+    </small>
+</div>
+
+{% endblock %}

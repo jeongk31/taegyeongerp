@@ -1,0 +1,295 @@
+{% extends "base.html" %}
+
+{% block title %}중상 대시보드 - 태경바이오 ERP{% endblock %}
+
+{% block extra_css %}
+<style>
+    .dashboard-stat-card {
+        border-left: 4px solid;
+        transition: transform 0.2s, box-shadow 0.2s;
+    }
+    .dashboard-stat-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15) !important;
+    }
+    .dashboard-stat-card .stat-number {
+        font-size: 2rem;
+        font-weight: 700;
+    }
+    .quick-action-card {
+        transition: all 0.2s;
+        cursor: pointer;
+        text-decoration: none;
+        color: inherit;
+    }
+    .quick-action-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15) !important;
+        color: inherit;
+    }
+    .store-badge {
+        font-size: 0.75rem;
+        padding: 0.25rem 0.5rem;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h3 class="mb-1">
+            <i class="bi bi-speedometer2 text-primary"></i> 중상 대시보드
+        </h3>
+        <p class="text-muted mb-0">{{ current_user.jungsung.business_name if current_user.jungsung else '중상 미지정' }}</p>
+    </div>
+    <span class="badge bg-info fs-6 px-3 py-2">중상</span>
+</div>
+
+<!-- Main Stats -->
+<div class="row g-3 mb-4">
+    <div class="col-xl-3 col-md-6">
+        <div class="card dashboard-stat-card shadow-sm" style="border-left-color: #0d6efd;">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-start mb-2">
+                    <div>
+                        <p class="text-muted mb-1 small">담당 매장</p>
+                        <div class="stat-number text-primary">{{ "{:,}".format(store_count) }}</div>
+                    </div>
+                    <div class="p-3 bg-primary bg-opacity-10 rounded">
+                        <i class="bi bi-shop-window fs-4 text-primary"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-xl-3 col-md-6">
+        <div class="card dashboard-stat-card shadow-sm" style="border-left-color: #198754;">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-start mb-2">
+                    <div>
+                        <p class="text-muted mb-1 small">오늘 등록</p>
+                        <div class="stat-number text-success">{{ "{:,}".format(today_registrations) }}</div>
+                    </div>
+                    <div class="p-3 bg-success bg-opacity-10 rounded">
+                        <i class="bi bi-clipboard-check fs-4 text-success"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-xl-3 col-md-6">
+        <div class="card dashboard-stat-card shadow-sm" style="border-left-color: #0dcaf0;">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-start mb-2">
+                    <div>
+                        <p class="text-muted mb-1 small">오늘 입고량</p>
+                        <div class="stat-number text-info">{{ "{:,}".format(today_stockin_qty) }}</div>
+                    </div>
+                    <div class="p-3 bg-info bg-opacity-10 rounded">
+                        <i class="bi bi-box-arrow-in-down fs-4 text-info"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-xl-3 col-md-6">
+        <div class="card dashboard-stat-card shadow-sm" style="border-left-color: #dc3545;">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-start mb-2">
+                    <div>
+                        <p class="text-muted mb-1 small">오늘 폐유량</p>
+                        <div class="stat-number text-danger">{{ "{:,}".format(today_waste_qty) }}</div>
+                    </div>
+                    <div class="p-3 bg-danger bg-opacity-10 rounded">
+                        <i class="bi bi-trash fs-4 text-danger"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Month Summary -->
+<div class="row g-3 mb-4">
+    <div class="col-lg-12">
+        <div class="card shadow-sm">
+            <div class="card-header bg-white">
+                <h6 class="mb-0">
+                    <i class="bi bi-calendar-month text-info"></i> 이번 달 등록 현황
+                </h6>
+            </div>
+            <div class="card-body">
+                <div class="row g-3">
+                    <div class="col-md-4">
+                        <div class="border-start border-success border-4 ps-3">
+                            <p class="text-muted mb-1 small">이번 달 총 등록</p>
+                            <h4 class="mb-0 text-success">{{ "{:,}".format(month_registrations) }}건</h4>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="border-start border-primary border-4 ps-3">
+                            <p class="text-muted mb-1 small">평균 등록 (일)</p>
+                            <h4 class="mb-0 text-primary">{{ "%.1f"|format(month_registrations / 30 if month_registrations > 0 else 0) }}건</h4>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="border-start border-info border-4 ps-3">
+                            <p class="text-muted mb-1 small">등록률</p>
+                            <h4 class="mb-0 text-info">{{ "%.0f"|format((today_registrations / store_count * 100) if store_count > 0 else 0) }}%</h4>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Quick Actions -->
+<div class="card shadow-sm mb-4">
+    <div class="card-header bg-white">
+        <h6 class="mb-0">
+            <i class="bi bi-lightning-charge text-warning"></i> 빠른 작업
+        </h6>
+    </div>
+    <div class="card-body">
+        <div class="row g-3">
+            <div class="col-lg-4 col-md-6">
+                <a href="{{ url_for('admin.erp_registration') }}" class="text-decoration-none">
+                    <div class="card quick-action-card shadow-sm h-100">
+                        <div class="card-body text-center">
+                            <div class="mb-3">
+                                <i class="bi bi-clipboard-check fs-1 text-primary"></i>
+                            </div>
+                            <h6 class="mb-0">ERP 등록</h6>
+                            <small class="text-muted">입고/폐유 데이터 입력</small>
+                        </div>
+                    </div>
+                </a>
+            </div>
+            <div class="col-lg-4 col-md-6">
+                <a href="{{ url_for('admin.store_status_list') }}" class="text-decoration-none">
+                    <div class="card quick-action-card shadow-sm h-100">
+                        <div class="card-body text-center">
+                            <div class="mb-3">
+                                <i class="bi bi-shop-window fs-1 text-success"></i>
+                            </div>
+                            <h6 class="mb-0">매장 상태 관리</h6>
+                            <small class="text-muted">매장 영업 상태 업데이트</small>
+                        </div>
+                    </div>
+                </a>
+            </div>
+            <div class="col-lg-4 col-md-6">
+                <a href="{{ url_for('admin.erp_tracking_jungsung') }}" class="text-decoration-none">
+                    <div class="card quick-action-card shadow-sm h-100">
+                        <div class="card-body text-center">
+                            <div class="mb-3">
+                                <i class="bi bi-clipboard-data fs-1 text-info"></i>
+                            </div>
+                            <h6 class="mb-0">등록 내역 조회</h6>
+                            <small class="text-muted">ERP 등록 기록 확인</small>
+                        </div>
+                    </div>
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Recent Registrations and Assigned Stores -->
+<div class="row g-3">
+    <div class="col-lg-7">
+        <div class="card shadow-sm">
+            <div class="card-header bg-white d-flex justify-content-between align-items-center">
+                <h6 class="mb-0">
+                    <i class="bi bi-clock-history text-primary"></i> 최근 등록 내역
+                </h6>
+                <span class="badge bg-light text-dark">{{ recent_registrations|length }}건</span>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th>등록일</th>
+                                <th>매장</th>
+                                <th>입고량</th>
+                                <th>폐유량</th>
+                                <th>비고</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for reg in recent_registrations %}
+                            <tr>
+                                <td>{{ reg.registration_date.strftime('%Y-%m-%d') if reg.registration_date else '-' }}</td>
+                                <td>{{ reg.store.name if reg.store else '-' }}</td>
+                                <td><span class="badge bg-info">{{ "{:,}".format(reg.stockin_qty) if reg.stockin_qty else '0' }}</span></td>
+                                <td><span class="badge bg-danger">{{ "{:,}".format(reg.waste_qty) if reg.waste_qty else '0' }}</span></td>
+                                <td>
+                                    {% if reg.is_return %}
+                                    <span class="badge bg-warning">반품</span>
+                                    {% else %}
+                                    <span class="text-muted">-</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% else %}
+                            <tr>
+                                <td colspan="5" class="text-center text-muted py-4">
+                                    최근 등록 내역이 없습니다.
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-5">
+        <div class="card shadow-sm">
+            <div class="card-header bg-white d-flex justify-content-between align-items-center">
+                <h6 class="mb-0">
+                    <i class="bi bi-shop-window text-success"></i> 담당 매장
+                </h6>
+                <span class="badge bg-light text-dark">{{ assigned_stores|length }}개</span>
+            </div>
+            <div class="card-body p-0">
+                <div class="list-group list-group-flush">
+                    {% for store in assigned_stores %}
+                    <div class="list-group-item">
+                        <div class="d-flex justify-content-between align-items-start">
+                            <div>
+                                <h6 class="mb-1">{{ store.name }}</h6>
+                                <small class="text-muted">
+                                    <i class="bi bi-building"></i> {{ store.branch.name if store.branch else '-' }}
+                                    {% if store.franchise %}
+                                    | <i class="bi bi-shop"></i> {{ store.franchise.name }}
+                                    {% endif %}
+                                </small>
+                            </div>
+                            <div>
+                                {% if store.status == 'active' %}
+                                <span class="badge bg-success store-badge">영업중</span>
+                                {% elif store.status == 'closed' %}
+                                <span class="badge bg-danger store-badge">폐점</span>
+                                {% elif store.status == 'bad_debt' %}
+                                <span class="badge bg-warning store-badge">악성미수</span>
+                                {% else %}
+                                <span class="badge bg-secondary store-badge">{{ store.status or '미지정' }}</span>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                    {% else %}
+                    <div class="list-group-item text-center text-muted py-4">
+                        담당 매장이 없습니다.
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

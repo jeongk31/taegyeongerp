@@ -1,0 +1,144 @@
+{% extends "base.html" %}
+{% block title %}품목 - 태경바이오 ERP{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h2>품목</h2>
+    <div class="d-flex gap-2 align-items-center">
+        <div class="export-buttons no-print">
+            <button class="btn btn-success btn-sm export-btn" onclick="exportTableToExcel('categoriesTable', '품목목록')">
+                <i class="bi bi-file-earmark-excel"></i> Excel
+            </button>
+            <button class="btn btn-danger btn-sm export-btn" onclick="exportTableToPDF('categoriesTable', '품목목록')">
+                <i class="bi bi-file-earmark-pdf"></i> PDF
+            </button>
+            <button class="btn btn-secondary btn-sm export-btn" onclick="printTable()">
+                <i class="bi bi-printer"></i> 인쇄
+            </button>
+        </div>
+        <select class="form-select form-select-sm" style="width: auto;" onchange="sortTable(this.value)">
+            <option value="id-asc" {% if sort == 'id' and order == 'asc' %}selected{% endif %}>ID ↑</option>
+            <option value="id-desc" {% if sort == 'id' and order == 'desc' %}selected{% endif %}>ID ↓</option>
+            <option value="name-asc" {% if sort == 'name' and order == 'asc' %}selected{% endif %}>품목명 ↑</option>
+            <option value="name-desc" {% if sort == 'name' and order == 'desc' %}selected{% endif %}>품목명 ↓</option>
+            <option value="created_at-desc" {% if sort == 'created_at' and order == 'desc' %}selected{% endif %}>최신순</option>
+            <option value="created_at-asc" {% if sort == 'created_at' and order == 'asc' %}selected{% endif %}>오래된순</option>
+        </select>
+        <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#categoryModal" onclick="openAddModal()">등록하기</button>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table id="categoriesTable" class="table">
+                <thead>
+                    <tr>
+                        <th style="width: 60px;">ID</th>
+                        <th>품목명</th>
+                        <th>상태</th>
+                        <th>등록일</th>
+                        <th style="width: 140px;"></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for category in categories %}
+                    <tr class="{% if not category.is_active %}table-secondary{% endif %}">
+                        <td class="id-cell">{{ category.id }}</td>
+                        <td>{{ category.name }}</td>
+                        <td>
+                            {% if category.is_active %}
+                            <span class="badge bg-success">활성</span>
+                            {% else %}
+                            <span class="badge bg-secondary">비활성</span>
+                            {% endif %}
+                        </td>
+                        <td>{{ category.created_at.strftime('%Y-%m-%d') }}</td>
+                        <td>
+                            <div class="d-flex gap-1">
+                                <button type="button" class="btn btn-sm btn-outline-secondary" title="변경" onclick='openEditModal({{ category.id }}, {{ category.name|tojson }})'>
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" viewBox="0 0 16 16"><path d="M12.146.146a.5.5 0 0 1 .708 0l3 3a.5.5 0 0 1 0 .708l-10 10a.5.5 0 0 1-.168.11l-5 2a.5.5 0 0 1-.65-.65l2-5a.5.5 0 0 1 .11-.168l10-10zM11.207 2.5 13.5 4.793 14.793 3.5 12.5 1.207 11.207 2.5zm1.586 3L10.5 3.207 4 9.707V10h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.5h.293l6.5-6.5zm-9.761 5.175-.106.106-1.528 3.821 3.821-1.528.106-.106A.5.5 0 0 1 5 12.5V12h-.5a.5.5 0 0 1-.5-.5V11h-.5a.5.5 0 0 1-.468-.325z"/></svg>
+                                </button>
+                                <form method="POST" action="{{ url_for('admin.categories_delete', id=category.id) }}" style="display: inline;" onsubmit="return confirm('정말 삭제하시겠습니까?')">
+                                    <button type="submit" class="btn btn-sm btn-outline-danger" title="삭제">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" viewBox="0 0 16 16"><path d="M5.5 5.5A.5.5 0 0 1 6 6v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm2.5 0a.5.5 0 0 1 .5.5v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm3 .5a.5.5 0 0 0-1 0v6a.5.5 0 0 0 1 0V6z"/><path fill-rule="evenodd" d="M14.5 3a1 1 0 0 1-1 1H13v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V4h-.5a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1H6a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1h3.5a1 1 0 0 1 1 1v1zM4.118 4 4 4.059V13a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1V4.059L11.882 4H4.118zM2.5 3V2h11v1h-11z"/></svg>
+                                    </button>
+                                </form>
+                                <form method="POST" action="{{ url_for('admin.categories_toggle', id=category.id) }}" style="display: inline;">
+                                    <button type="submit" class="btn btn-sm btn-outline-{% if category.is_active %}secondary{% else %}success{% endif %}" style="min-width: 56px;">
+                                        {% if category.is_active %}중지{% else %}활성화{% endif %}
+                                    </button>
+                                </form>
+                            </div>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="5" class="empty-state">
+                            <p>등록된 품목이 없습니다.</p>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Category Modal -->
+<div class="modal fade" id="categoryModal" tabindex="-1" aria-labelledby="categoryModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="categoryModalLabel">품목 등록</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form id="categoryForm" method="POST">
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">품목명 <span class="required">*</span></label>
+                        <input type="text" name="name" id="modal_name" class="form-control" required>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">취소</button>
+                    <button type="submit" class="btn btn-primary" id="modalSubmitBtn">등록하기</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const addUrl = "{{ url_for('admin.categories_add') }}";
+
+function sortTable(value) {
+    const [sort, order] = value.split('-');
+    window.location.href = `{{ url_for('admin.categories_list') }}?sort=${sort}&order=${order}`;
+}
+
+function openAddModal() {
+    document.getElementById('categoryModalLabel').textContent = '품목 등록';
+    document.getElementById('modalSubmitBtn').textContent = '등록하기';
+    document.getElementById('categoryForm').action = addUrl;
+
+    // Clear form
+    document.getElementById('modal_name').value = '';
+}
+
+function openEditModal(categoryId, name) {
+    document.getElementById('categoryModalLabel').textContent = '품목 변경';
+    document.getElementById('modalSubmitBtn').textContent = '변경하기';
+    document.getElementById('categoryForm').action = `/admin/categories/${categoryId}/edit`;
+
+    // Fill form
+    document.getElementById('modal_name').value = name;
+
+    // Show modal
+    const modal = new bootstrap.Modal(document.getElementById('categoryModal'));
+    modal.show();
+}
+</script>
+{% endblock %}

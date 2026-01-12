@@ -1,0 +1,244 @@
+{% extends "base.html" %}
+{% block title %}출고 - 태경바이오 ERP{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h2>출고</h2>
+    <div class="d-flex gap-2 align-items-center">
+        <div class="export-buttons no-print">
+            <button class="btn btn-success btn-sm export-btn" onclick="exportTableToExcel('shipmentsTable', '출고목록')">
+                <i class="bi bi-file-earmark-excel"></i> Excel
+            </button>
+            <button class="btn btn-danger btn-sm export-btn" onclick="exportTableToPDF('shipmentsTable', '출고목록')">
+                <i class="bi bi-file-earmark-pdf"></i> PDF
+            </button>
+            <button class="btn btn-secondary btn-sm export-btn" onclick="printTable()">
+                <i class="bi bi-printer"></i> 인쇄
+            </button>
+        </div>
+        <a href="{{ url_for('admin.shipments_create') }}" class="btn btn-primary">출고하기</a>
+    </div>
+</div>
+
+<!-- Search Filters -->
+<div class="card mb-4">
+    <div class="card-body py-2 position-relative">
+        <button type="button" class="btn btn-sm btn-link position-absolute top-0 end-0 p-1 text-muted" id="toggleSearchBar" style="font-size: 0.7rem;">
+            <span id="toggleSearchIcon">▲</span>
+        </button>
+        <form method="GET" action="{{ url_for('admin.shipments_list') }}" id="searchForm">
+            <div id="searchFilters">
+                <!-- Row 1: Filter dropdowns -->
+                <div class="row g-2 align-items-end mb-2" style="font-size: 0.8rem;">
+                    <div class="col">
+                        <label class="form-label mb-1">품목</label>
+                        <select name="category" class="form-select form-select-sm" style="font-size: 0.8rem;">
+                            <option value="">전체</option>
+                            {% for cat in categories %}
+                            <option value="{{ cat }}" {% if filters.category == cat %}selected{% endif %}>{{ cat }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col">
+                        <label class="form-label mb-1">프랜차이즈</label>
+                        <select name="product_id" class="form-select form-select-sm" style="font-size: 0.8rem;">
+                            <option value="">전체</option>
+                            {% for product in products %}
+                            <option value="{{ product.id }}" {% if filters.product_id == product.id %}selected{% endif %}>{{ product.franchise.name if product.franchise else product.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    {% if current_user.is_admin() %}
+                    <div class="col">
+                        <label class="form-label mb-1">지사</label>
+                        <select name="branch_id" class="form-select form-select-sm" style="font-size: 0.8rem;">
+                            <option value="">전체</option>
+                            {% for branch in branches %}
+                            <option value="{{ branch.id }}" {% if filters.branch_id == branch.id %}selected{% endif %}>{{ branch.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    {% endif %}
+                    <div class="col">
+                        <label class="form-label mb-1">중상</label>
+                        <select name="jungsung_id" class="form-select form-select-sm" style="font-size: 0.8rem;">
+                            <option value="">전체</option>
+                            {% for jungsung in jungsungs %}
+                            <option value="{{ jungsung.id }}" {% if filters.jungsung_id == jungsung.id %}selected{% endif %}>{{ jungsung.business_name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                </div>
+                <!-- Row 2: Date range and buttons -->
+                <div class="row g-2 align-items-end" style="font-size: 0.8rem;">
+                    <div class="col-auto">
+                        <label class="form-label mb-1">기간</label>
+                        <div class="d-flex align-items-center gap-1">
+                            <input type="date" name="date_from" class="form-control form-control-sm" style="font-size: 0.8rem; width: 130px;" value="{{ filters.date_from or '' }}">
+                            <span>~</span>
+                            <input type="date" name="date_to" class="form-control form-control-sm" style="font-size: 0.8rem; width: 130px;" value="{{ filters.date_to or '' }}">
+                        </div>
+                    </div>
+                    <div class="col-auto">
+                        <button type="submit" class="btn btn-sm btn-primary">검색</button>
+                        <a href="{{ url_for('admin.shipments_list') }}" class="btn btn-sm btn-outline-secondary">초기화</a>
+                    </div>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Shipment Items List -->
+<div class="card">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <span>출고 내역 <span class="badge bg-secondary">{{ items|length }}건</span></span>
+        <div class="d-flex gap-2">
+            <button type="button" class="btn btn-sm btn-danger" id="deleteSelectedBtn" style="display: none;">선택 삭제</button>
+            {% if items|length > 10 %}
+            <button type="button" class="btn btn-sm btn-outline-secondary" id="toggleShipmentItems">더보기</button>
+            {% endif %}
+        </div>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table id="shipmentsTable" class="table">
+                <thead>
+                    <tr>
+                        <th style="width: 40px;">
+                            <input type="checkbox" class="form-check-input" id="selectAllCheckbox">
+                        </th>
+                        <th>출고일</th>
+                        <th>지사</th>
+                        <th>중상</th>
+                        <th>품목</th>
+                        <th>프랜차이즈</th>
+                        <th class="text-end">수량</th>
+                        <th class="text-end">단가</th>
+                        <th class="text-end">합계</th>
+                        <th>담당자</th>
+                    </tr>
+                </thead>
+                <tbody id="shipmentItemsBody">
+                    {% for item in items %}
+                    <tr class="{% if loop.index > 10 %}shipment-item-hidden d-none{% endif %}">
+                        <td>
+                            <input type="checkbox" class="form-check-input item-checkbox" value="{{ item.id }}">
+                        </td>
+                        <td>{{ item.shipment_date.strftime('%Y-%m-%d') }}</td>
+                        <td>{{ item.branch.name if item.branch else '-' }}</td>
+                        <td>{{ item.jungsung.business_name if item.jungsung else '-' }}</td>
+                        <td>{{ item.product.category }}</td>
+                        <td>{{ item.product.franchise.name if item.product.franchise else '-' }}</td>
+                        <td class="text-end">{{ '{:,}'.format(item.quantity) }}</td>
+                        <td class="text-end">{{ '{:,}'.format(item.unit_price) }}원</td>
+                        <td class="text-end">{{ '{:,}'.format(item.total_price) }}원</td>
+                        <td>{{ item.creator.name if item.creator else '-' }}</td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="10" class="empty-state">
+                            <p>출고 내역이 없습니다.</p>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// Toggle search bar
+const toggleSearchBarBtn = document.getElementById('toggleSearchBar');
+const searchFilters = document.getElementById('searchFilters');
+const toggleSearchIcon = document.getElementById('toggleSearchIcon');
+let searchBarVisible = true;
+
+toggleSearchBarBtn.addEventListener('click', function() {
+    searchBarVisible = !searchBarVisible;
+    searchFilters.style.display = searchBarVisible ? 'block' : 'none';
+    toggleSearchIcon.textContent = searchBarVisible ? '▲' : '▼';
+});
+
+// Toggle shipment items table
+const toggleShipmentItemsBtn = document.getElementById('toggleShipmentItems');
+if (toggleShipmentItemsBtn) {
+    let shipmentItemsExpanded = false;
+    toggleShipmentItemsBtn.addEventListener('click', function() {
+        const hiddenRows = document.querySelectorAll('.shipment-item-hidden');
+        shipmentItemsExpanded = !shipmentItemsExpanded;
+        hiddenRows.forEach(row => {
+            row.classList.toggle('d-none', !shipmentItemsExpanded);
+        });
+        this.textContent = shipmentItemsExpanded ? '접기' : '더보기';
+    });
+}
+
+// Select all checkbox functionality
+const selectAllCheckbox = document.getElementById('selectAllCheckbox');
+const itemCheckboxes = document.querySelectorAll('.item-checkbox');
+const deleteSelectedBtn = document.getElementById('deleteSelectedBtn');
+
+function updateDeleteButtonVisibility() {
+    const checkedBoxes = document.querySelectorAll('.item-checkbox:checked');
+    deleteSelectedBtn.style.display = checkedBoxes.length > 0 ? 'block' : 'none';
+}
+
+selectAllCheckbox.addEventListener('change', function() {
+    itemCheckboxes.forEach(checkbox => {
+        checkbox.checked = this.checked;
+    });
+    updateDeleteButtonVisibility();
+});
+
+itemCheckboxes.forEach(checkbox => {
+    checkbox.addEventListener('change', function() {
+        const allChecked = Array.from(itemCheckboxes).every(cb => cb.checked);
+        const someChecked = Array.from(itemCheckboxes).some(cb => cb.checked);
+        selectAllCheckbox.checked = allChecked;
+        selectAllCheckbox.indeterminate = someChecked && !allChecked;
+        updateDeleteButtonVisibility();
+    });
+});
+
+// Delete selected items
+deleteSelectedBtn.addEventListener('click', function() {
+    const checkedBoxes = document.querySelectorAll('.item-checkbox:checked');
+    const itemIds = Array.from(checkedBoxes).map(cb => cb.value);
+
+    if (itemIds.length === 0) {
+        alert('삭제할 항목을 선택해주세요.');
+        return;
+    }
+
+    if (!confirm(`선택한 ${itemIds.length}개의 항목을 삭제하시겠습니까?`)) {
+        return;
+    }
+
+    // Send delete request
+    fetch('{{ url_for("admin.shipments_delete") }}', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ item_ids: itemIds })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert(data.message || '삭제되었습니다.');
+            location.reload();
+        } else {
+            alert(data.message || '삭제 중 오류가 발생했습니다.');
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('삭제 중 오류가 발생했습니다.');
+    });
+});
+</script>
+{% endblock %}

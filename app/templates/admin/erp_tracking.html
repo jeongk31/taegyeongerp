@@ -1,0 +1,207 @@
+{% extends "base.html" %}
+{% block title %}주별 ERP 등록수량 체크 - 태경바이오 ERP{% endblock %}
+
+{% block extra_css %}
+<style>
+    .tracking-table {
+        font-size: 0.75rem;
+    }
+    .tracking-table th, .tracking-table td {
+        padding: 0.25rem 0.4rem;
+        white-space: nowrap;
+    }
+    .tracking-table thead th {
+        position: sticky;
+        top: 0;
+        background-color: #f8f9fa;
+        z-index: 1;
+    }
+    .tracking-table .week-header {
+        background-color: #e9ecef;
+    }
+    .tracking-table .week-odd {
+        background-color: #f8f9fa;
+    }
+    .tracking-table .week-even {
+        background-color: #e9ecef;
+    }
+    .tracking-table .total-col {
+        background-color: #fff3cd;
+    }
+    .month-selector {
+        display: flex;
+        gap: 0.25rem;
+        flex-wrap: wrap;
+    }
+    .month-selector .btn {
+        padding: 0.25rem 0.5rem;
+        font-size: 0.75rem;
+    }
+    .month-selector .btn.active {
+        background-color: #0d6efd;
+        color: white;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h2>주별 ERP 등록수량 체크</h2>
+</div>
+
+<!-- 월별 보기 (Weekly View within Month) -->
+<div class="card mb-4">
+    <div class="card-header">
+        <span>월별 보기 ({{ year }}년 {{ month }}월)</span>
+    </div>
+    <div class="card-body py-2">
+        <form method="GET" action="{{ url_for('admin.erp_tracking') }}" class="row g-2 align-items-center">
+            <input type="hidden" name="date_from" value="{{ date_from }}">
+            <input type="hidden" name="date_to" value="{{ date_to }}">
+            <div class="col-auto">
+                <select name="year" class="form-select form-select-sm" style="width: 100px;" onchange="this.form.submit()">
+                    {% for y in range(year - 2, year + 2) %}
+                    <option value="{{ y }}" {% if y == year %}selected{% endif %}>{{ y }}년</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col">
+                <div class="month-selector">
+                    {% for m in range(1, 13) %}
+                    <button type="submit" name="month" value="{{ m }}" class="btn btn-outline-secondary {% if m == month %}active{% endif %}">{{ m }}월</button>
+                    {% endfor %}
+                </div>
+            </div>
+        </form>
+    </div>
+    <div class="card-body p-0 border-top">
+        <div class="table-responsive" style="max-height: 500px; overflow-y: auto;">
+            <table class="table table-sm table-bordered tracking-table mb-0">
+                <thead>
+                    <tr>
+                        <th rowspan="2" class="align-middle">담당지사</th>
+                        <th rowspan="2" class="align-middle">담당자</th>
+                        <th rowspan="2" class="align-middle">프랜차이즈명</th>
+                        <th rowspan="2" class="align-middle">매장명</th>
+                        {% for week in weeks %}
+                        <th colspan="{{ categories|length }}" class="text-center week-header">{{ week.num }}주</th>
+                        {% endfor %}
+                        <th colspan="{{ categories|length }}" class="text-center total-col">합계</th>
+                    </tr>
+                    <tr>
+                        {% for week in weeks %}
+                        {% for cat in categories %}
+                        <th class="text-center">{{ cat.name }}</th>
+                        {% endfor %}
+                        {% endfor %}
+                        {% for cat in categories %}
+                        <th class="text-center total-col">{{ cat.name }}</th>
+                        {% endfor %}
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for data in weekly_data %}
+                    <tr>
+                        <td>{{ data.branch.name if data.branch else '-' }}</td>
+                        <td>{{ data.jungsung.contact_person if data.jungsung else '-' }}</td>
+                        <td>{{ data.franchise.name if data.franchise else '-' }}</td>
+                        <td>{{ data.store.name }}</td>
+                        {% for week_data in data.weeks %}
+                        {% for cat in categories %}
+                        <td class="text-end">{{ week_data.get(cat.name, 0) }}</td>
+                        {% endfor %}
+                        {% endfor %}
+                        {% for cat in categories %}
+                        <td class="text-end total-col fw-bold">{{ data.totals.get(cat.name, 0) }}</td>
+                        {% endfor %}
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="{{ 4 + (weeks|length * categories|length) + categories|length }}" class="text-center text-muted py-3">
+                            등록된 매장이 없습니다.
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- 기간검색 (Date Range View - Weekly Breakdown) -->
+<div class="card mb-4">
+    <div class="card-header">
+        <span>기간검색 ({{ date_from }} ~ {{ date_to }})</span>
+    </div>
+    <div class="card-body py-2">
+        <form method="GET" action="{{ url_for('admin.erp_tracking') }}" class="row g-2 align-items-center">
+            <input type="hidden" name="year" value="{{ year }}">
+            <input type="hidden" name="month" value="{{ month }}">
+            <div class="col-auto">
+                <div class="d-flex align-items-center gap-1">
+                    <input type="date" name="date_from" class="form-control form-control-sm" style="width: 140px;" value="{{ date_from }}">
+                    <span>~</span>
+                    <input type="date" name="date_to" class="form-control form-control-sm" style="width: 140px;" value="{{ date_to }}">
+                </div>
+            </div>
+            <div class="col-auto">
+                <button type="submit" class="btn btn-sm btn-primary">검색</button>
+            </div>
+        </form>
+    </div>
+    <div class="card-body p-0 border-top">
+        <div class="table-responsive" style="max-height: 500px; overflow-y: auto;">
+            <table class="table table-sm table-bordered tracking-table mb-0">
+                <thead>
+                    <tr>
+                        <th rowspan="2" class="align-middle">담당지사</th>
+                        <th rowspan="2" class="align-middle">담당자</th>
+                        <th rowspan="2" class="align-middle">프랜차이즈명</th>
+                        <th rowspan="2" class="align-middle">매장명</th>
+                        {% for week in daterange_weeks %}
+                        <th colspan="{{ categories|length }}" class="text-center {% if week.num % 2 == 1 %}week-odd{% else %}week-even{% endif %}">
+                            {{ week.num }}주<br><small class="text-muted">{{ week.start.strftime('%m/%d') }}~{{ week.end.strftime('%m/%d') }}</small>
+                        </th>
+                        {% endfor %}
+                        <th colspan="{{ categories|length }}" class="text-center total-col">합계</th>
+                    </tr>
+                    <tr>
+                        {% for week in daterange_weeks %}
+                        {% for cat in categories %}
+                        <th class="text-center {% if week.num % 2 == 1 %}week-odd{% else %}week-even{% endif %}">{{ cat.name }}</th>
+                        {% endfor %}
+                        {% endfor %}
+                        {% for cat in categories %}
+                        <th class="text-center total-col">{{ cat.name }}</th>
+                        {% endfor %}
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for data in daterange_data %}
+                    <tr>
+                        <td>{{ data.branch.name if data.branch else '-' }}</td>
+                        <td>{{ data.jungsung.contact_person if data.jungsung else '-' }}</td>
+                        <td>{{ data.franchise.name if data.franchise else '-' }}</td>
+                        <td>{{ data.store.name }}</td>
+                        {% for week_idx in range(daterange_weeks|length) %}
+                        {% for cat in categories %}
+                        <td class="text-end {% if daterange_weeks[week_idx].num % 2 == 1 %}week-odd{% else %}week-even{% endif %}">{{ data.weeks[week_idx].get(cat.name, 0) if data.weeks|length > week_idx else 0 }}</td>
+                        {% endfor %}
+                        {% endfor %}
+                        {% for cat in categories %}
+                        <td class="text-end total-col fw-bold">{{ data.totals.get(cat.name, 0) }}</td>
+                        {% endfor %}
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="{{ 4 + (daterange_weeks|length * categories|length) + categories|length }}" class="text-center text-muted py-3">
+                            등록된 매장이 없습니다.
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}
