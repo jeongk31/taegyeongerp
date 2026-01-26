@@ -1485,6 +1485,53 @@ def shipments_delete():
         return jsonify({'success': False, 'message': '삭제 중 오류가 발생했습니다.'}), 500
 
 
+@admin_bp.route('/shipments/<int:id>/edit', methods=['POST'])
+@login_required
+@branch_required
+def shipments_edit(id):
+    """Edit a shipment item"""
+    item = ShipmentItem.query.get_or_404(id)
+
+    # Check permission
+    if not current_user.is_admin() and item.branch_id != current_user.branch_id:
+        flash('권한이 없습니다.', 'danger')
+        return redirect(url_for('admin.shipments_list'))
+
+    shipment_date_str = request.form.get('shipment_date')
+    branch_id = request.form.get('branch_id') or None
+    jungsung_id = request.form.get('jungsung_id') or None
+    store_id = request.form.get('store_id') or None
+    product_id = request.form.get('product_id')
+    quantity = request.form.get('quantity')
+    unit_price = request.form.get('unit_price')
+
+    if not shipment_date_str or not product_id or not quantity or not unit_price:
+        flash('출고일, 제품, 수량, 단가는 필수 입력 항목입니다.', 'danger')
+        return redirect(url_for('admin.shipments_list'))
+
+    try:
+        shipment_date = datetime.strptime(shipment_date_str, '%Y-%m-%d').date()
+        qty = int(quantity)
+        price = int(unit_price)
+    except ValueError:
+        flash('올바른 값을 입력해주세요.', 'danger')
+        return redirect(url_for('admin.shipments_list'))
+
+    item.shipment_date = shipment_date
+    if current_user.is_admin():
+        item.branch_id = int(branch_id) if branch_id else None
+    item.jungsung_id = int(jungsung_id) if jungsung_id else None
+    item.store_id = int(store_id) if store_id else None
+    item.product_id = int(product_id)
+    item.quantity = qty
+    item.unit_price = price
+    item.total_price = qty * price
+    db.session.commit()
+
+    flash('출고 정보가 수정되었습니다.', 'success')
+    return redirect(url_for('admin.shipments_list'))
+
+
 @admin_bp.route('/api/product/<int:product_id>')
 @login_required
 @branch_required

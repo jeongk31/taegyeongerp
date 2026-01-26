@@ -117,6 +117,7 @@
                         <th class="text-end">단가</th>
                         <th class="text-end">합계</th>
                         <th>담당자</th>
+                        <th style="width: 50px;"></th>
                     </tr>
                 </thead>
                 <tbody id="shipmentItemsBody">
@@ -134,10 +135,15 @@
                         <td class="text-end">{{ '{:,}'.format(item.unit_price) }}원</td>
                         <td class="text-end">{{ '{:,}'.format(item.total_price) }}원</td>
                         <td>{{ item.creator.name if item.creator else '-' }}</td>
+                        <td>
+                            <button type="button" class="btn btn-sm btn-outline-secondary" title="변경" onclick='openEditModal({{ item.id }}, {{ item.shipment_date.strftime("%Y-%m-%d")|tojson }}, {{ (item.branch_id or "")|tojson }}, {{ (item.jungsung_id or "")|tojson }}, {{ (item.store_id or "")|tojson }}, {{ item.product_id|tojson }}, {{ item.quantity }}, {{ item.unit_price }})'>
+                                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" viewBox="0 0 16 16"><path d="M12.146.146a.5.5 0 0 1 .708 0l3 3a.5.5 0 0 1 0 .708l-10 10a.5.5 0 0 1-.168.11l-5 2a.5.5 0 0 1-.65-.65l2-5a.5.5 0 0 1 .11-.168l10-10zM11.207 2.5 13.5 4.793 14.793 3.5 12.5 1.207 11.207 2.5zm1.586 3L10.5 3.207 4 9.707V10h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.5h.293l6.5-6.5zm-9.761 5.175-.106.106-1.528 3.821 3.821-1.528.106-.106A.5.5 0 0 1 5 12.5V12h-.5a.5.5 0 0 1-.5-.5V11h-.5a.5.5 0 0 1-.468-.325z"/></svg>
+                            </button>
+                        </td>
                     </tr>
                     {% else %}
                     <tr>
-                        <td colspan="10" class="empty-state">
+                        <td colspan="11" class="empty-state">
                             <p>출고 내역이 없습니다.</p>
                         </td>
                     </tr>
@@ -147,10 +153,145 @@
         </div>
     </div>
 </div>
+
+<!-- Shipment Edit Modal -->
+<div class="modal fade" id="shipmentModal" tabindex="-1" aria-labelledby="shipmentModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="shipmentModalLabel">출고 변경</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form id="shipmentForm" method="POST">
+                <div class="modal-body">
+                    <div class="row g-3">
+                        <div class="col-md-4">
+                            <label class="form-label">출고일 <span class="required">*</span></label>
+                            <input type="date" name="shipment_date" id="modal_shipment_date" class="form-control" required>
+                        </div>
+                        {% if current_user.is_admin() %}
+                        <div class="col-md-4">
+                            <label class="form-label">지사</label>
+                            <select name="branch_id" id="modal_branch_id" class="form-select">
+                                <option value="">선택</option>
+                                {% for branch in branches %}
+                                <option value="{{ branch.id }}">{{ branch.name }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        {% endif %}
+                        <div class="col-md-4">
+                            <label class="form-label">중상</label>
+                            <select name="jungsung_id" id="modal_jungsung_id" class="form-select">
+                                <option value="">선택</option>
+                                {% for jungsung in jungsungs %}
+                                <option value="{{ jungsung.id }}">{{ jungsung.business_name }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">프랜차이즈 <span class="required">*</span></label>
+                            <select name="product_id" id="modal_product_id" class="form-select" required>
+                                <option value="">선택</option>
+                                {% for product in products %}
+                                <option value="{{ product.id }}" data-price="{{ product.unit_price }}">{{ product.category }} - {{ product.franchise.name if product.franchise else product.name }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">매장명</label>
+                            <select name="store_id" id="modal_store_id" class="form-select">
+                                <option value="">선택</option>
+                                {% for store in stores %}
+                                <option value="{{ store.id }}">{{ store.name }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">수량 <span class="required">*</span></label>
+                            <input type="number" name="quantity" id="modal_quantity" class="form-control" required min="1">
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">단가 <span class="required">*</span></label>
+                            <div class="input-group">
+                                <input type="text" id="modal_unit_price_display" class="form-control" required>
+                                <input type="hidden" name="unit_price" id="modal_unit_price" value="">
+                                <span class="input-group-text">원</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">뒤로가기</button>
+                    <button type="submit" class="btn btn-primary" id="modalSubmitBtn">변경하기</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
 {% endblock %}
 
 {% block extra_js %}
 <script>
+const isAdmin = {{ 'true' if current_user.is_admin() else 'false' }};
+
+// Format number with commas
+function formatNumber(num) {
+    return num.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+}
+
+// Parse number from formatted string
+function parseFormattedNumber(str) {
+    return parseInt(str.replace(/,/g, '')) || 0;
+}
+
+// Auto-fill unit price when product is selected
+document.getElementById('modal_product_id').addEventListener('change', function() {
+    const selectedOption = this.options[this.selectedIndex];
+    if (selectedOption.dataset.price) {
+        const price = parseInt(selectedOption.dataset.price);
+        document.getElementById('modal_unit_price').value = price;
+        document.getElementById('modal_unit_price_display').value = formatNumber(price);
+    } else {
+        document.getElementById('modal_unit_price').value = '';
+        document.getElementById('modal_unit_price_display').value = '';
+    }
+});
+
+// Handle unit price input formatting
+document.getElementById('modal_unit_price_display').addEventListener('input', function() {
+    const value = this.value.replace(/[^\d]/g, '');
+    if (value) {
+        const numValue = parseInt(value);
+        this.value = formatNumber(numValue);
+        document.getElementById('modal_unit_price').value = numValue;
+    } else {
+        document.getElementById('modal_unit_price').value = '';
+    }
+});
+
+function openEditModal(itemId, shipmentDate, branchId, jungsungId, storeId, productId, quantity, unitPrice) {
+    document.getElementById('shipmentModalLabel').textContent = '출고 변경';
+    document.getElementById('modalSubmitBtn').textContent = '변경하기';
+    document.getElementById('shipmentForm').action = `/admin/shipments/${itemId}/edit`;
+
+    // Fill form
+    document.getElementById('modal_shipment_date').value = shipmentDate;
+    if (isAdmin) {
+        document.getElementById('modal_branch_id').value = branchId;
+    }
+    document.getElementById('modal_jungsung_id').value = jungsungId;
+    document.getElementById('modal_store_id').value = storeId;
+    document.getElementById('modal_product_id').value = productId;
+    document.getElementById('modal_quantity').value = quantity;
+    document.getElementById('modal_unit_price').value = unitPrice;
+    document.getElementById('modal_unit_price_display').value = formatNumber(unitPrice);
+
+    // Show modal
+    const modal = new bootstrap.Modal(document.getElementById('shipmentModal'));
+    modal.show();
+}
+
 // Toggle search bar
 const toggleSearchBarBtn = document.getElementById('toggleSearchBar');
 const searchFilters = document.getElementById('searchFilters');
