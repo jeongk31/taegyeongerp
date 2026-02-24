@@ -30,8 +30,7 @@ with app.app_context():
                 registration_date DATE NOT NULL,
                 store_id INTEGER NOT NULL REFERENCES stores(id),
                 jungsung_id INTEGER NOT NULL REFERENCES jungsungs(id),
-                stockin_qty INTEGER DEFAULT 0,
-                waste_qty INTEGER DEFAULT 0,
+                category_quantities TEXT,
                 is_return BOOLEAN DEFAULT 0,
                 is_completed BOOLEAN DEFAULT 0,
                 created_by INTEGER REFERENCES users(id),
@@ -42,6 +41,17 @@ with app.app_context():
         db.session.commit()
         print("erp_registrations table created successfully")
 
+    # Add category_quantities column if it doesn't exist
+    try:
+        db.session.execute(text("SELECT category_quantities FROM erp_registrations LIMIT 1"))
+        print("category_quantities column already exists in erp_registrations table")
+    except:
+        db.session.rollback()
+        print("Adding category_quantities column to erp_registrations table...")
+        db.session.execute(text("ALTER TABLE erp_registrations ADD COLUMN category_quantities TEXT"))
+        db.session.commit()
+        print("category_quantities column added successfully")
+
     # Check if bad_debt_store column exists in stores table
     try:
         db.session.execute(text("SELECT bad_debt_store FROM stores LIMIT 1"))
@@ -51,6 +61,16 @@ with app.app_context():
         db.session.execute(text("ALTER TABLE stores ADD COLUMN bad_debt_store BOOLEAN DEFAULT 0"))
         db.session.commit()
         print("bad_debt_store column added successfully")
+
+    # Check if external_purchase_store column exists in stores table
+    try:
+        db.session.execute(text("SELECT external_purchase_store FROM stores LIMIT 1"))
+        print("external_purchase_store column already exists in stores table")
+    except:
+        print("Adding external_purchase_store column to stores table...")
+        db.session.execute(text("ALTER TABLE stores ADD COLUMN external_purchase_store BOOLEAN DEFAULT 0"))
+        db.session.commit()
+        print("external_purchase_store column added successfully")
 
     # Check if branch_id column exists in stock_ins table
     try:
@@ -98,5 +118,37 @@ with app.app_context():
         """))
         db.session.commit()
         print("payments table created successfully")
+
+    # Check if franchise_categories table exists
+    try:
+        db.session.execute(text("SELECT 1 FROM franchise_categories LIMIT 1"))
+        print("franchise_categories table already exists")
+    except:
+        db.session.rollback()
+        print("Creating franchise_categories table...")
+        db.session.execute(text("""
+            CREATE TABLE franchise_categories (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                franchise_id INTEGER NOT NULL REFERENCES franchises(id) ON DELETE CASCADE,
+                category_id INTEGER NOT NULL REFERENCES categories(id) ON DELETE CASCADE,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(franchise_id, category_id)
+            )
+        """))
+        db.session.commit()
+        print("franchise_categories table created successfully")
+
+        # Populate from existing products data
+        print("Populating franchise_categories from existing products...")
+        db.session.execute(text("""
+            INSERT OR IGNORE INTO franchise_categories (franchise_id, category_id)
+            SELECT DISTINCT p.franchise_id, c.id
+            FROM products p
+            JOIN categories c ON c.name = p.category
+            WHERE p.franchise_id IS NOT NULL
+              AND p.is_active = 1
+        """))
+        db.session.commit()
+        print("franchise_categories populated from existing products")
 
     print("\nDatabase update completed!")

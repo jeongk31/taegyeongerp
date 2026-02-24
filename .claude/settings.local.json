@@ -1,0 +1,21 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(nslookup:*)",
+      "Bash(python init_db.py:*)",
+      "Bash(curl:*)",
+      "Bash(tree:*)",
+      "Bash(python:*)",
+      "Bash(cd:*)",
+      "Bash(python3:*)",
+      "Bash(git rev-parse:*)",
+      "Bash(git init:*)",
+      "Bash(git remote add:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)",
+      "Bash(ls:*)",
+      "Bash(/Users/thet/anaconda3/bin/pip install:*)"
+    ]
+  }
+}

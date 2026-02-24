@@ -19,19 +19,10 @@
         <div class="card-header">항목 추가</div>
         <div class="card-body">
             <div class="row g-3 align-items-end">
-                {% if current_user.is_admin() %}
-                <div class="col-md-2">
-                    <label class="form-label">지사 <span class="required">*</span></label>
-                    <select id="add_branch_id" class="form-select form-select-sm">
-                        <option value="">선택</option>
-                        {% for branch in branches %}
-                        <option value="{{ branch.id }}">{{ branch.name }}</option>
-                        {% endfor %}
-                    </select>
-                </div>
-                {% else %}
+                {% if not current_user.is_admin() %}
                 <input type="hidden" id="add_branch_id" value="{{ current_user.branch_id }}">
                 {% endif %}
+                {% if current_user.is_admin() %}
                 <div class="col-md-2">
                     <label class="form-label">입고업체</label>
                     <select id="add_supplier_id" class="form-select form-select-sm">
@@ -41,6 +32,7 @@
                         {% endfor %}
                     </select>
                 </div>
+                {% endif %}
                 <div class="col-md-2">
                     <label class="form-label">품목 <span class="required">*</span></label>
                     <select id="add_category" class="form-select form-select-sm">
@@ -91,29 +83,26 @@
                 <table class="table table-sm" id="itemsTable">
                     <thead>
                         <tr>
-                            <th style="width: 110px;">입고일</th>
-                            {% if current_user.is_admin() %}
-                            <th>지사</th>
-                            {% endif %}
-                            <th>입고업체</th>
+                            <th>입고일</th>
+                            {% if current_user.is_admin() %}<th>입고업체</th>{% endif %}
                             <th>품목</th>
                             <th>프랜차이즈</th>
-                            <th class="text-end" style="width: 80px;">수량</th>
-                            <th class="text-end" style="width: 100px;">단가</th>
-                            <th class="text-end" style="width: 100px;">합계</th>
-                            <th style="width: 50px;"></th>
+                            <th class="text-end">수량</th>
+                            <th class="text-end">단가</th>
+                            <th class="text-end">합계</th>
+                            <th style="width: 40px;"></th>
                         </tr>
                     </thead>
                     <tbody id="itemsBody">
                         <tr id="emptyRow">
-                            <td colspan="{{ 9 if current_user.is_admin() else 8 }}" class="empty-state">
+                            <td colspan="{{ 8 if current_user.is_admin() else 7 }}" class="empty-state">
                                 <p>항목을 추가해주세요.</p>
                             </td>
                         </tr>
                     </tbody>
                     <tfoot>
                         <tr class="table-light">
-                            <td colspan="{{ 7 if current_user.is_admin() else 6 }}" class="text-end fw-bold">총 합계</td>
+                            <td colspan="{{ 6 if current_user.is_admin() else 5 }}" class="text-end fw-bold">총 합계</td>
                             <td class="text-end fw-bold" id="grandTotal">0원</td>
                             <td></td>
                         </tr>
@@ -139,12 +128,14 @@ const today = '{{ today }}';
 const isAdmin = {{ 'true' if current_user.is_admin() else 'false' }};
 const userBranchId = '{{ current_user.branch_id or '' }}';
 
+{% if current_user.is_admin() %}
 // Supplier name mapping
 const supplierNames = {
     {% for supplier in suppliers %}
     '{{ supplier.id }}': '{{ supplier.company_name }}',
     {% endfor %}
 };
+{% endif %}
 
 // Products data for filtering
 const productsData = [
@@ -155,6 +146,17 @@ const productsData = [
         franchiseId: {{ product.franchise_id or 'null' }},
         franchiseName: {{ (product.franchise.name if product.franchise else '')|tojson }},
         unitPrice: {{ product.unit_price }}
+    }{% if not loop.last %},{% endif %}
+    {% endfor %}
+];
+
+// Franchise-Category mapping for filtering
+const franchiseCategoryData = [
+    {% for fc in franchise_category_data %}
+    {
+        id: {{ fc.id }},
+        name: {{ fc.name|tojson }},
+        categories: {{ fc.categories|tojson }}
     }{% if not loop.last %},{% endif %}
     {% endfor %}
 ];
@@ -180,7 +182,7 @@ document.getElementById('add_category').addEventListener('change', function() {
         return;
     }
 
-    // Filter products by category and add unique franchises
+    // Show franchises that have products for this category
     const franchiseIds = new Set();
     productsData.filter(p => p.category === category).forEach(p => {
         if (p.franchiseId && !franchiseIds.has(p.franchiseId)) {
@@ -212,7 +214,7 @@ document.getElementById('add_franchise').addEventListener('change', function() {
 
 function addItem() {
     const branchEl = document.getElementById('add_branch_id');
-    const supplierSelect = document.getElementById('add_supplier_id');
+    const supplierSelect = isAdmin ? document.getElementById('add_supplier_id') : null;
     const categorySelect = document.getElementById('add_category');
     const franchiseSelect = document.getElementById('add_franchise');
     const productId = document.getElementById('add_product_id').value;
@@ -221,7 +223,7 @@ function addItem() {
     const stockDate = document.getElementById('add_stock_date').value;
 
     // Validation
-    if (isAdmin && branchEl.tagName === 'SELECT' && !branchEl.value) {
+    if (!isAdmin && !branchEl.value) {
         alert('지사를 선택해주세요.');
         return;
     }
@@ -238,17 +240,17 @@ function addItem() {
 
     // Get branch info
     let branchId, branchName;
-    if (isAdmin && branchEl.tagName === 'SELECT') {
-        branchId = branchEl.value;
-        branchName = branchId ? branchEl.options[branchEl.selectedIndex].text : '-';
+    if (isAdmin) {
+        branchId = '';
+        branchName = '';
     } else {
         branchId = userBranchId;
         branchName = '{{ current_user.branch.name if current_user.branch else "-" }}';
     }
 
-    // Get supplier info
-    const supplierId = supplierSelect.value;
-    const supplierName = supplierId ? supplierNames[supplierId] : '-';
+    // Get supplier info (admin only)
+    const supplierId = supplierSelect ? supplierSelect.value : '';
+    const supplierName = (supplierId && isAdmin) ? supplierNames[supplierId] : '-';
 
     const productCategory = categorySelect.value;
     const productName = franchiseSelect.options[franchiseSelect.selectedIndex].text;
@@ -274,19 +276,20 @@ function addItem() {
             <input type="date" name="stock_date[]" class="form-control form-control-sm" value="${stockDate}" required>
         </td>`;
 
-    if (isAdmin) {
-        rowHtml += `
-        <td>${branchName}
-            <input type="hidden" name="branch_id[]" value="${branchId}">
-        </td>`;
-    } else {
+    if (!isAdmin) {
         rowHtml += `<input type="hidden" name="branch_id[]" value="${branchId}">`;
     }
 
-    rowHtml += `
+    if (isAdmin) {
+        rowHtml += `
         <td>${supplierName}
             <input type="hidden" name="supplier_id[]" value="${supplierId}">
-        </td>
+        </td>`;
+    } else {
+        rowHtml += `<input type="hidden" name="supplier_id[]" value="">`;
+    }
+
+    rowHtml += `
         <td>${productCategory}</td>
         <td>${productName}
             <input type="hidden" name="product_id[]" value="${productId}">
@@ -333,7 +336,7 @@ function removeItem(index) {
     // Check if table is empty
     const tbody = document.getElementById('itemsBody');
     if (tbody.children.length === 0) {
-        const colspan = isAdmin ? 9 : 8;
+        const colspan = isAdmin ? 8 : 7;
         tbody.innerHTML = `
             <tr id="emptyRow">
                 <td colspan="${colspan}" class="empty-state">

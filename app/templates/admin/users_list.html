@@ -1,0 +1,105 @@
+{% extends "base.html" %}
+{% block title %}사용자 관리 - 태경바이오 ERP{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h2>사용자 관리</h2>
+    <div class="d-flex gap-2 align-items-center">
+        <div class="export-buttons no-print">
+            <button class="btn btn-success btn-sm export-btn" onclick="exportTableToExcel('usersTable', '사용자목록')">
+                <i class="bi bi-file-earmark-excel"></i> Excel
+            </button>
+            <button class="btn btn-danger btn-sm export-btn" onclick="exportTableToPDF('usersTable', '사용자목록')">
+                <i class="bi bi-file-earmark-pdf"></i> PDF
+            </button>
+            <button class="btn btn-secondary btn-sm export-btn" onclick="printTable()">
+                <i class="bi bi-printer"></i> 인쇄
+            </button>
+        </div>
+        <select class="form-select form-select-sm" style="width: auto;" onchange="filterByRole(this.value)">
+            <option value="" {% if not role_filter %}selected{% endif %}>전체</option>
+            <option value="admin" {% if role_filter == 'admin' %}selected{% endif %}>관리자</option>
+            <option value="branch" {% if role_filter == 'branch' %}selected{% endif %}>지사</option>
+            <option value="jungsung" {% if role_filter == 'jungsung' %}selected{% endif %}>중상</option>
+            <option value="franchise" {% if role_filter == 'franchise' %}selected{% endif %}>프랜차이즈</option>
+            <option value="driver" {% if role_filter == 'driver' %}selected{% endif %}>배송기사</option>
+        </select>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <span>전체 사용자 <span class="badge bg-secondary">{{ users|length }}명</span></span>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table id="usersTable" class="table">
+                <thead>
+                    <tr>
+                        <th style="width: 60px;">ID</th>
+                        <th>아이디</th>
+                        <th>이름</th>
+                        <th>역할</th>
+                        <th>소속</th>
+                        <th>상태</th>
+                        <th>등록일</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for user in users %}
+                    <tr class="{% if not user.is_active %}table-secondary{% endif %}">
+                        <td class="id-cell">{{ user.id }}</td>
+                        <td>{{ user.username }}</td>
+                        <td>{{ user.name or '-' }}</td>
+                        <td>
+                            <span class="badge bg-{{ 'danger' if user.is_admin() else 'primary' if user.is_branch() else 'info' if user.is_jungsung() else 'warning' if user.is_franchise() else 'secondary' }}">
+                                {{ user.get_role_display() }}
+                            </span>
+                        </td>
+                        <td>
+                            {% if user.branch %}
+                                {{ user.branch.name }}
+                            {% elif user.franchise %}
+                                {{ user.franchise.name }}
+                            {% elif user.jungsung %}
+                                {{ user.jungsung.business_name }}
+                            {% else %}
+                                -
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if user.is_active %}
+                            <span class="badge bg-success">활성</span>
+                            {% else %}
+                            <span class="badge bg-secondary">비활성</span>
+                            {% endif %}
+                        </td>
+                        <td>{{ user.created_at.strftime('%Y-%m-%d') if user.created_at else '-' }}</td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="7" class="empty-state">
+                            <p>등록된 사용자가 없습니다.</p>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function filterByRole(role) {
+    const url = new URL(window.location.href);
+    if (role) {
+        url.searchParams.set('role', role);
+    } else {
+        url.searchParams.delete('role');
+    }
+    window.location.href = url.toString();
+}
+</script>
+{% endblock %}

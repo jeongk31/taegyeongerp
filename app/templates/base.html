@@ -42,6 +42,8 @@
                     <li class="nav-item dropdown">
                         <a class="nav-link dropdown-toggle" href="#" data-bs-toggle="dropdown">등록관리</a>
                         <ul class="dropdown-menu">
+                            <li><a class="dropdown-item" href="{{ url_for('admin.users_list') }}">사용자</a></li>
+                            <li><hr class="dropdown-divider"></li>
                             <li><a class="dropdown-item" href="{{ url_for('admin.branches_list') }}">지사</a></li>
                             <li><a class="dropdown-item" href="{{ url_for('admin.jungsungs_list') }}">담당중상</a></li>
                             <li><a class="dropdown-item" href="{{ url_for('admin.suppliers_list') }}">제품입고업체</a></li>
@@ -70,6 +72,7 @@
                     <li class="nav-item dropdown">
                         <a class="nav-link dropdown-toggle" href="#" data-bs-toggle="dropdown">ERP 등록수량 체크</a>
                         <ul class="dropdown-menu">
+                            <li><a class="dropdown-item" href="{{ url_for('admin.erp_tracking_admin', search_type='calendar') }}">일별 검색</a></li>
                             <li><a class="dropdown-item" href="{{ url_for('admin.erp_tracking_admin', search_type='weekly') }}">주별 검색</a></li>
                             <li><a class="dropdown-item" href="{{ url_for('admin.erp_tracking_admin', search_type='monthly') }}">월별 검색</a></li>
                             <li><a class="dropdown-item" href="{{ url_for('admin.erp_tracking_admin', search_type='period') }}">기간 검색</a></li>
@@ -83,9 +86,6 @@
                         <a class="nav-link dropdown-toggle" href="#" data-bs-toggle="dropdown">등록관리</a>
                         <ul class="dropdown-menu">
                             <li><a class="dropdown-item" href="{{ url_for('admin.jungsungs_list') }}">담당중상</a></li>
-                            <li><hr class="dropdown-divider"></li>
-                            <li><a class="dropdown-item" href="{{ url_for('admin.franchises_list') }}">프랜차이즈</a></li>
-                            <li><a class="dropdown-item" href="{{ url_for('admin.products_list') }}">제품</a></li>
                             <li><a class="dropdown-item" href="{{ url_for('admin.stores_list') }}">매장</a></li>
                         </ul>
                     </li>
@@ -108,6 +108,7 @@
                     <li class="nav-item dropdown">
                         <a class="nav-link dropdown-toggle" href="#" data-bs-toggle="dropdown">ERP 등록수량 체크</a>
                         <ul class="dropdown-menu">
+                            <li><a class="dropdown-item" href="{{ url_for('admin.erp_tracking_admin', search_type='calendar') }}">일별 검색</a></li>
                             <li><a class="dropdown-item" href="{{ url_for('admin.erp_tracking_admin', search_type='weekly') }}">주별 검색</a></li>
                             <li><a class="dropdown-item" href="{{ url_for('admin.erp_tracking_admin', search_type='monthly') }}">월별 검색</a></li>
                             <li><a class="dropdown-item" href="{{ url_for('admin.erp_tracking_admin', search_type='period') }}">기간 검색</a></li>
@@ -127,9 +128,18 @@
                     <li class="nav-item dropdown">
                         <a class="nav-link dropdown-toggle" href="#" data-bs-toggle="dropdown">ERP 등록수량 체크</a>
                         <ul class="dropdown-menu">
+                            <li><a class="dropdown-item" href="{{ url_for('admin.erp_tracking_franchise', search_type='calendar') }}">일별 검색</a></li>
                             <li><a class="dropdown-item" href="{{ url_for('admin.erp_tracking_franchise', search_type='weekly') }}">주별 검색</a></li>
                             <li><a class="dropdown-item" href="{{ url_for('admin.erp_tracking_franchise', search_type='monthly') }}">월별 검색</a></li>
                             <li><a class="dropdown-item" href="{{ url_for('admin.erp_tracking_franchise', search_type='period') }}">기간 검색</a></li>
+                        </ul>
+                    </li>
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle" href="#" data-bs-toggle="dropdown">월마감자료</a>
+                        <ul class="dropdown-menu">
+                            <li><a class="dropdown-item" href="{{ url_for('admin.monthly_closing_franchise', search_type='calendar') }}">일별 검색</a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('admin.monthly_closing_franchise', search_type='monthly') }}">월별 검색</a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('admin.monthly_closing_franchise', search_type='period') }}">기간 검색</a></li>
                         </ul>
                     </li>
                     {% elif current_user.is_jungsung() %}
@@ -139,8 +149,15 @@
                     <li class="nav-item">
                         <a class="nav-link" href="{{ url_for('admin.erp_registration') }}">ERP등록</a>
                     </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="{{ url_for('admin.erp_tracking_jungsung') }}">ERP등록체크</a>
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle" href="#" data-bs-toggle="dropdown">ERP등록체크</a>
+                        <ul class="dropdown-menu">
+                            <li><a class="dropdown-item" href="{{ url_for('admin.erp_tracking_jungsung', search_type='calendar') }}">일별 검색</a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('admin.erp_tracking_jungsung', search_type='daily') }}">날짜별 검색</a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('admin.erp_tracking_jungsung', search_type='weekly') }}">주별 검색</a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('admin.erp_tracking_jungsung', search_type='monthly') }}">월별 검색</a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('admin.erp_tracking_jungsung', search_type='period') }}">기간 검색</a></li>
+                        </ul>
                     </li>
                     <li class="nav-item">
                         <a class="nav-link" href="{{ url_for('admin.store_status_list') }}">매장상태관리</a>

@@ -122,6 +122,26 @@
                         {% endif %}
                     </div>
                 </div>
+                <div class="row">
+                    <div class="col-6">
+                        <div class="detail-label">악성미수매장</div>
+                    </div>
+                    <div class="col-6">
+                        {% if store.bad_debt_store %}
+                        <span class="status-marker status-danger"></span>
+                        {% endif %}
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="col-6">
+                        <div class="detail-label">외부사입매장</div>
+                    </div>
+                    <div class="col-6">
+                        {% if store.external_purchase_store %}
+                        <span class="status-marker status-danger"></span>
+                        {% endif %}
+                    </div>
+                </div>
             </div>
         </div>
         <div class="card">

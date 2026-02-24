@@ -223,8 +223,10 @@
                             <tr>
                                 <td>{{ reg.registration_date.strftime('%Y-%m-%d') if reg.registration_date else '-' }}</td>
                                 <td>{{ reg.store.name if reg.store else '-' }}</td>
-                                <td><span class="badge bg-info">{{ "{:,}".format(reg.stockin_qty) if reg.stockin_qty else '0' }}</span></td>
-                                <td><span class="badge bg-danger">{{ "{:,}".format(reg.waste_qty) if reg.waste_qty else '0' }}</span></td>
+                                {% set qty_dict = reg.get_category_quantities() %}
+                                {% set stockin_total = qty_dict.values()|sum - (qty_dict.get('폐유', 0)) %}
+                                <td><span class="badge bg-info">{{ "{:,}".format(stockin_total|int) }}</span></td>
+                                <td><span class="badge bg-danger">{{ "{:,}".format(qty_dict.get('폐유', 0)|int) }}</span></td>
                                 <td>
                                     {% if reg.is_return %}
                                     <span class="badge bg-warning">반품</span>

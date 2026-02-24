@@ -28,11 +28,10 @@
         </button>
         <form method="GET" action="{{ url_for('admin.shipments_list') }}" id="searchForm">
             <div id="searchFilters">
-                <!-- Row 1: Filter dropdowns -->
-                <div class="row g-2 align-items-end mb-2" style="font-size: 0.8rem;">
+                <div class="row g-2 align-items-end" style="font-size: 0.8rem;">
                     <div class="col">
                         <label class="form-label mb-1">품목</label>
-                        <select name="category" class="form-select form-select-sm" style="font-size: 0.8rem;">
+                        <select name="category" id="filter_category" class="form-select form-select-sm" style="font-size: 0.8rem;">
                             <option value="">전체</option>
                             {% for cat in categories %}
                             <option value="{{ cat }}" {% if filters.category == cat %}selected{% endif %}>{{ cat }}</option>
@@ -41,10 +40,10 @@
                     </div>
                     <div class="col">
                         <label class="form-label mb-1">프랜차이즈</label>
-                        <select name="product_id" class="form-select form-select-sm" style="font-size: 0.8rem;">
+                        <select name="franchise_id" id="filter_franchise_id" class="form-select form-select-sm" style="font-size: 0.8rem;">
                             <option value="">전체</option>
-                            {% for product in products %}
-                            <option value="{{ product.id }}" {% if filters.product_id == product.id %}selected{% endif %}>{{ product.franchise.name if product.franchise else product.name }}</option>
+                            {% for franchise in franchises %}
+                            <option value="{{ franchise.id }}" {% if filters.franchise_id == franchise.id %}selected{% endif %}>{{ franchise.name }}</option>
                             {% endfor %}
                         </select>
                     </div>
@@ -59,6 +58,7 @@
                         </select>
                     </div>
                     {% endif %}
+                    {% if not current_user.is_admin() %}
                     <div class="col">
                         <label class="form-label mb-1">중상</label>
                         <select name="jungsung_id" class="form-select form-select-sm" style="font-size: 0.8rem;">
@@ -68,9 +68,7 @@
                             {% endfor %}
                         </select>
                     </div>
-                </div>
-                <!-- Row 2: Date range and buttons -->
-                <div class="row g-2 align-items-end" style="font-size: 0.8rem;">
+                    {% endif %}
                     <div class="col-auto">
                         <label class="form-label mb-1">기간</label>
                         <div class="d-flex align-items-center gap-1">
@@ -80,8 +78,11 @@
                         </div>
                     </div>
                     <div class="col-auto">
-                        <button type="submit" class="btn btn-sm btn-primary">검색</button>
-                        <a href="{{ url_for('admin.shipments_list') }}" class="btn btn-sm btn-outline-secondary">초기화</a>
+                        <label class="form-label mb-1">&nbsp;</label>
+                        <div class="d-flex gap-1">
+                            <button type="submit" class="btn btn-sm btn-primary">검색</button>
+                            <a href="{{ url_for('admin.shipments_list') }}" class="btn btn-sm btn-outline-secondary">초기화</a>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -109,15 +110,18 @@
                             <input type="checkbox" class="form-check-input" id="selectAllCheckbox">
                         </th>
                         <th>출고일</th>
+                        {% if current_user.is_admin() %}
                         <th>지사</th>
+                        {% else %}
                         <th>중상</th>
+                        {% endif %}
                         <th>품목</th>
                         <th>프랜차이즈</th>
                         <th class="text-end">수량</th>
                         <th class="text-end">단가</th>
                         <th class="text-end">합계</th>
                         <th>담당자</th>
-                        <th style="width: 50px;"></th>
+                        <th style="width: 40px;"></th>
                     </tr>
                 </thead>
                 <tbody id="shipmentItemsBody">
@@ -126,9 +130,13 @@
                         <td>
                             <input type="checkbox" class="form-check-input item-checkbox" value="{{ item.id }}">
                         </td>
-                        <td>{{ item.shipment_date.strftime('%Y-%m-%d') }}</td>
+                        {% if current_user.is_admin() %}
+                        <td>{{ item.stock_date.strftime('%Y-%m-%d') }}</td>
                         <td>{{ item.branch.name if item.branch else '-' }}</td>
+                        {% else %}
+                        <td>{{ item.shipment_date.strftime('%Y-%m-%d') }}</td>
                         <td>{{ item.jungsung.business_name if item.jungsung else '-' }}</td>
+                        {% endif %}
                         <td>{{ item.product.category }}</td>
                         <td>{{ item.product.franchise.name if item.product.franchise else '-' }}</td>
                         <td class="text-end">{{ '{:,}'.format(item.quantity) }}</td>
@@ -136,14 +144,20 @@
                         <td class="text-end">{{ '{:,}'.format(item.total_price) }}원</td>
                         <td>{{ item.creator.name if item.creator else '-' }}</td>
                         <td>
-                            <button type="button" class="btn btn-sm btn-outline-secondary" title="변경" onclick='openEditModal({{ item.id }}, {{ item.shipment_date.strftime("%Y-%m-%d")|tojson }}, {{ (item.branch_id or "")|tojson }}, {{ (item.jungsung_id or "")|tojson }}, {{ (item.store_id or "")|tojson }}, {{ item.product_id|tojson }}, {{ item.quantity }}, {{ item.unit_price }})'>
+                            {% if current_user.is_admin() %}
+                            <button type="button" class="btn btn-sm btn-outline-secondary" title="변경" onclick='openEditModal({{ item.id }}, {{ item.stock_date.strftime("%Y-%m-%d")|tojson }}, {{ (item.branch_id or "")|tojson }}, {{ item.product_id|tojson }}, {{ item.quantity }}, {{ item.unit_price }})'>
                                 <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" viewBox="0 0 16 16"><path d="M12.146.146a.5.5 0 0 1 .708 0l3 3a.5.5 0 0 1 0 .708l-10 10a.5.5 0 0 1-.168.11l-5 2a.5.5 0 0 1-.65-.65l2-5a.5.5 0 0 1 .11-.168l10-10zM11.207 2.5 13.5 4.793 14.793 3.5 12.5 1.207 11.207 2.5zm1.586 3L10.5 3.207 4 9.707V10h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.5h.293l6.5-6.5zm-9.761 5.175-.106.106-1.528 3.821 3.821-1.528.106-.106A.5.5 0 0 1 5 12.5V12h-.5a.5.5 0 0 1-.5-.5V11h-.5a.5.5 0 0 1-.468-.325z"/></svg>
                             </button>
+                            {% else %}
+                            <button type="button" class="btn btn-sm btn-outline-secondary" title="변경" onclick='openEditModal({{ item.id }}, {{ item.shipment_date.strftime("%Y-%m-%d")|tojson }}, {{ (item.branch_id or "")|tojson }}, {{ (item.jungsung_id or "")|tojson }}, {{ item.product_id|tojson }}, {{ item.quantity }}, {{ item.unit_price }})'>
+                                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" viewBox="0 0 16 16"><path d="M12.146.146a.5.5 0 0 1 .708 0l3 3a.5.5 0 0 1 0 .708l-10 10a.5.5 0 0 1-.168.11l-5 2a.5.5 0 0 1-.65-.65l2-5a.5.5 0 0 1 .11-.168l10-10zM11.207 2.5 13.5 4.793 14.793 3.5 12.5 1.207 11.207 2.5zm1.586 3L10.5 3.207 4 9.707V10h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.5h.293l6.5-6.5zm-9.761 5.175-.106.106-1.528 3.821 3.821-1.528.106-.106A.5.5 0 0 1 5 12.5V12h-.5a.5.5 0 0 1-.5-.5V11h-.5a.5.5 0 0 1-.468-.325z"/></svg>
+                            </button>
+                            {% endif %}
                         </td>
                     </tr>
                     {% else %}
                     <tr>
-                        <td colspan="11" class="empty-state">
+                        <td colspan="10" class="empty-state">
                             <p>출고 내역이 없습니다.</p>
                         </td>
                     </tr>
@@ -167,7 +181,7 @@
                     <div class="row g-3">
                         <div class="col-md-4">
                             <label class="form-label">출고일 <span class="required">*</span></label>
-                            <input type="date" name="shipment_date" id="modal_shipment_date" class="form-control" required>
+                            <input type="date" name="{{ 'stock_date' if current_user.is_admin() else 'shipment_date' }}" id="modal_shipment_date" class="form-control" required>
                         </div>
                         {% if current_user.is_admin() %}
                         <div class="col-md-4">
@@ -179,7 +193,7 @@
                                 {% endfor %}
                             </select>
                         </div>
-                        {% endif %}
+                        {% else %}
                         <div class="col-md-4">
                             <label class="form-label">중상</label>
                             <select name="jungsung_id" id="modal_jungsung_id" class="form-select">
@@ -189,21 +203,13 @@
                                 {% endfor %}
                             </select>
                         </div>
+                        {% endif %}
                         <div class="col-md-6">
                             <label class="form-label">프랜차이즈 <span class="required">*</span></label>
                             <select name="product_id" id="modal_product_id" class="form-select" required>
                                 <option value="">선택</option>
                                 {% for product in products %}
                                 <option value="{{ product.id }}" data-price="{{ product.unit_price }}">{{ product.category }} - {{ product.franchise.name if product.franchise else product.name }}</option>
-                                {% endfor %}
-                            </select>
-                        </div>
-                        <div class="col-md-6">
-                            <label class="form-label">매장명</label>
-                            <select name="store_id" id="modal_store_id" class="form-select">
-                                <option value="">선택</option>
-                                {% for store in stores %}
-                                <option value="{{ store.id }}">{{ store.name }}</option>
                                 {% endfor %}
                             </select>
                         </div>
@@ -234,6 +240,60 @@
 {% block extra_js %}
 <script>
 const isAdmin = {{ 'true' if current_user.is_admin() else 'false' }};
+
+// Franchise-Category mapping for filtering
+const franchiseCategoryData = [
+    {% for fc in franchise_category_data %}
+    {
+        id: {{ fc.id }},
+        name: {{ fc.name|tojson }},
+        categories: {{ fc.categories|tojson }}
+    }{% if not loop.last %},{% endif %}
+    {% endfor %}
+];
+
+// All franchise options for restoring
+const allFranchiseOptions = [];
+document.querySelectorAll('#filter_franchise_id option').forEach(opt => {
+    allFranchiseOptions.push({ value: opt.value, text: opt.textContent, selected: opt.selected });
+});
+
+// Filter franchise dropdown when category changes
+document.getElementById('filter_category').addEventListener('change', function() {
+    const category = this.value;
+    const franchiseSelect = document.getElementById('filter_franchise_id');
+    const currentValue = franchiseSelect.value;
+
+    franchiseSelect.innerHTML = '<option value="">전체</option>';
+
+    if (!category) {
+        // Show all franchises
+        allFranchiseOptions.forEach(opt => {
+            if (opt.value) {
+                const option = document.createElement('option');
+                option.value = opt.value;
+                option.textContent = opt.text;
+                if (opt.value === currentValue) option.selected = true;
+                franchiseSelect.appendChild(option);
+            }
+        });
+    } else {
+        // Show only franchises linked to this category
+        const linkedIds = new Set();
+        franchiseCategoryData.filter(f => f.categories.includes(category)).forEach(f => {
+            linkedIds.add(String(f.id));
+        });
+        allFranchiseOptions.forEach(opt => {
+            if (opt.value && linkedIds.has(opt.value)) {
+                const option = document.createElement('option');
+                option.value = opt.value;
+                option.textContent = opt.text;
+                if (opt.value === currentValue) option.selected = true;
+                franchiseSelect.appendChild(option);
+            }
+        });
+    }
+});
 
 // Format number with commas
 function formatNumber(num) {
@@ -270,22 +330,31 @@ document.getElementById('modal_unit_price_display').addEventListener('input', fu
     }
 });
 
-function openEditModal(itemId, shipmentDate, branchId, jungsungId, storeId, productId, quantity, unitPrice) {
+function openEditModal(...args) {
     document.getElementById('shipmentModalLabel').textContent = '출고 변경';
     document.getElementById('modalSubmitBtn').textContent = '변경하기';
-    document.getElementById('shipmentForm').action = `/admin/shipments/${itemId}/edit`;
 
-    // Fill form
-    document.getElementById('modal_shipment_date').value = shipmentDate;
     if (isAdmin) {
+        // Admin: args are (id, stock_date, branch_id, product_id, quantity, unitPrice)
+        const [itemId, itemDate, branchId, productId, quantity, unitPrice] = args;
+        document.getElementById('shipmentForm').action = `/admin/stockins/${itemId}/edit`;
+        document.getElementById('modal_shipment_date').value = itemDate;
         document.getElementById('modal_branch_id').value = branchId;
+        document.getElementById('modal_product_id').value = productId;
+        document.getElementById('modal_quantity').value = quantity;
+        document.getElementById('modal_unit_price').value = unitPrice;
+        document.getElementById('modal_unit_price_display').value = formatNumber(unitPrice);
+    } else {
+        // Branch: args are (id, shipment_date, branch_id, jungsung_id, product_id, quantity, unitPrice)
+        const [itemId, itemDate, branchId, jungsungId, productId, quantity, unitPrice] = args;
+        document.getElementById('shipmentForm').action = `/admin/shipments/${itemId}/edit`;
+        document.getElementById('modal_shipment_date').value = itemDate;
+        document.getElementById('modal_jungsung_id').value = jungsungId;
+        document.getElementById('modal_product_id').value = productId;
+        document.getElementById('modal_quantity').value = quantity;
+        document.getElementById('modal_unit_price').value = unitPrice;
+        document.getElementById('modal_unit_price_display').value = formatNumber(unitPrice);
     }
-    document.getElementById('modal_jungsung_id').value = jungsungId;
-    document.getElementById('modal_store_id').value = storeId;
-    document.getElementById('modal_product_id').value = productId;
-    document.getElementById('modal_quantity').value = quantity;
-    document.getElementById('modal_unit_price').value = unitPrice;
-    document.getElementById('modal_unit_price_display').value = formatNumber(unitPrice);
 
     // Show modal
     const modal = new bootstrap.Modal(document.getElementById('shipmentModal'));
@@ -360,7 +429,8 @@ deleteSelectedBtn.addEventListener('click', function() {
     }
 
     // Send delete request
-    fetch('{{ url_for("admin.shipments_delete") }}', {
+    const deleteUrl = isAdmin ? '{{ url_for("admin.stockins_delete") }}' : '{{ url_for("admin.shipments_delete") }}';
+    fetch(deleteUrl, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',

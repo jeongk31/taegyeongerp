@@ -16,7 +16,9 @@
                 <i class="bi bi-printer"></i> 인쇄
             </button>
         </div>
+        {% if current_user.is_admin() %}
         <a href="{{ url_for('admin.stockins_create') }}" class="btn btn-primary">입고하기</a>
+        {% endif %}
     </div>
 </div>
 
@@ -28,22 +30,10 @@
         </button>
         <form method="GET" action="{{ url_for('admin.stockins_list') }}" id="searchForm">
             <div id="searchFilters">
-                <!-- Row 1: Filter dropdowns -->
-                <div class="row g-2 align-items-end mb-2" style="font-size: 0.8rem;">
-                    {% if current_user.is_admin() %}
-                    <div class="col">
-                        <label class="form-label mb-1">지사</label>
-                        <select name="branch_id" class="form-select form-select-sm" style="font-size: 0.8rem;">
-                            <option value="">전체</option>
-                            {% for branch in branches %}
-                            <option value="{{ branch.id }}" {% if filters.branch_id == branch.id %}selected{% endif %}>{{ branch.name }}</option>
-                            {% endfor %}
-                        </select>
-                    </div>
-                    {% endif %}
+                <div class="row g-2 align-items-end" style="font-size: 0.8rem;">
                     <div class="col">
                         <label class="form-label mb-1">품목</label>
-                        <select name="category" class="form-select form-select-sm" style="font-size: 0.8rem;">
+                        <select name="category" id="filter_category" class="form-select form-select-sm" style="font-size: 0.8rem;">
                             <option value="">전체</option>
                             {% for cat in categories %}
                             <option value="{{ cat }}" {% if filters.category == cat %}selected{% endif %}>{{ cat }}</option>
@@ -52,13 +42,14 @@
                     </div>
                     <div class="col">
                         <label class="form-label mb-1">프랜차이즈</label>
-                        <select name="product_id" class="form-select form-select-sm" style="font-size: 0.8rem;">
+                        <select name="franchise_id" id="filter_franchise_id" class="form-select form-select-sm" style="font-size: 0.8rem;">
                             <option value="">전체</option>
-                            {% for product in products %}
-                            <option value="{{ product.id }}" {% if filters.product_id == product.id %}selected{% endif %}>{{ product.franchise.name if product.franchise else product.name }}</option>
+                            {% for franchise in franchises %}
+                            <option value="{{ franchise.id }}" {% if filters.franchise_id == franchise.id %}selected{% endif %}>{{ franchise.name }}</option>
                             {% endfor %}
                         </select>
                     </div>
+                    {% if current_user.is_admin() %}
                     <div class="col">
                         <label class="form-label mb-1">입고업체</label>
                         <select name="supplier_id" class="form-select form-select-sm" style="font-size: 0.8rem;">
@@ -68,9 +59,7 @@
                             {% endfor %}
                         </select>
                     </div>
-                </div>
-                <!-- Row 2: Date range and buttons -->
-                <div class="row g-2 align-items-end" style="font-size: 0.8rem;">
+                    {% endif %}
                     <div class="col-auto">
                         <label class="form-label mb-1">기간</label>
                         <div class="d-flex align-items-center gap-1">
@@ -80,8 +69,11 @@
                         </div>
                     </div>
                     <div class="col-auto">
-                        <button type="submit" class="btn btn-sm btn-primary">검색</button>
-                        <a href="{{ url_for('admin.stockins_list') }}" class="btn btn-sm btn-outline-secondary">초기화</a>
+                        <label class="form-label mb-1">&nbsp;</label>
+                        <div class="d-flex gap-1">
+                            <button type="submit" class="btn btn-sm btn-primary">검색</button>
+                            <a href="{{ url_for('admin.stockins_list') }}" class="btn btn-sm btn-outline-secondary">초기화</a>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -94,7 +86,9 @@
     <div class="card-header d-flex justify-content-between align-items-center">
         <span>입고 내역 <span class="badge bg-secondary">{{ stockins|length }}건</span></span>
         <div class="d-flex gap-2">
+            {% if current_user.is_admin() %}
             <button type="button" class="btn btn-sm btn-danger" id="deleteSelectedBtn" style="display: none;">선택 삭제</button>
+            {% endif %}
             {% if stockins|length > 10 %}
             <button type="button" class="btn btn-sm btn-outline-secondary" id="toggleStockinItems">더보기</button>
             {% endif %}
@@ -105,47 +99,49 @@
             <table id="stockinsTable" class="table">
                 <thead>
                     <tr>
+                        {% if current_user.is_admin() %}
                         <th style="width: 40px;">
                             <input type="checkbox" class="form-check-input" id="selectAllCheckbox">
                         </th>
-                        <th>입고일</th>
-                        {% if current_user.is_admin() %}
-                        <th>지사</th>
                         {% endif %}
-                        <th>입고업체</th>
+                        <th>입고일</th>
+                        {% if current_user.is_admin() %}<th>입고업체</th>{% endif %}
                         <th>품목</th>
                         <th>프랜차이즈</th>
                         <th class="text-end">수량</th>
                         <th class="text-end">단가</th>
                         <th class="text-end">합계</th>
                         <th>담당자</th>
-                        <th style="width: 80px;"></th>
+                        {% if current_user.is_admin() %}
+                        <th style="width: 60px;"></th>
+                        {% endif %}
                     </tr>
                 </thead>
                 <tbody id="stockinItemsBody">
                     {% for stockin in stockins %}
                     <tr class="{% if loop.index > 10 %}stockin-item-hidden d-none{% endif %}">
+                        {% if current_user.is_admin() %}
                         <td>
                             <input type="checkbox" class="form-check-input item-checkbox" value="{{ stockin.id }}">
                         </td>
-                        <td>{{ stockin.stock_date.strftime('%Y-%m-%d') }}</td>
-                        {% if current_user.is_admin() %}
-                        <td>{{ stockin.branch.name if stockin.branch else '-' }}</td>
                         {% endif %}
-                        <td>{{ stockin.supplier.company_name if stockin.supplier else '-' }}</td>
+                        <td>{{ stockin.stock_date.strftime('%Y-%m-%d') }}</td>
+                        {% if current_user.is_admin() %}<td>{{ stockin.supplier.company_name if stockin.supplier else '-' }}</td>{% endif %}
                         <td>{{ stockin.product.category }}</td>
                         <td>{{ stockin.product.franchise.name if stockin.product.franchise else '-' }}</td>
                         <td class="text-end">{{ '{:,}'.format(stockin.quantity) }}</td>
                         <td class="text-end">{{ '{:,}'.format(stockin.unit_price) }}원</td>
                         <td class="text-end">{{ '{:,}'.format(stockin.total_price) }}원</td>
                         <td>{{ stockin.creator.name if stockin.creator else '-' }}</td>
+                        {% if current_user.is_admin() %}
                         <td>
-                            <button type="button" class="btn btn-sm btn-outline-secondary" onclick='openEditModal({{ stockin.id }}, {{ stockin.stock_date.strftime("%Y-%m-%d")|tojson }}, {{ (stockin.branch_id or "")|tojson }}, {{ (stockin.supplier_id or "")|tojson }}, {{ stockin.product_id|tojson }}, {{ stockin.quantity }}, {{ stockin.unit_price }}, {{ (stockin.memo or "")|tojson }})'>변경</button>
+                            <button type="button" class="btn btn-sm btn-outline-secondary" onclick='openEditModal({{ stockin.id }}, {{ stockin.stock_date.strftime("%Y-%m-%d")|tojson }}, {{ (stockin.branch_id or "")|tojson }}, {{ (stockin.supplier_id or "")|tojson }}, {{ stockin.product_id|tojson }}, {{ stockin.quantity }}, {{ stockin.unit_price }}, {{ (stockin.memo or "")|tojson }})' title="변경"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" viewBox="0 0 16 16"><path d="M12.146.146a.5.5 0 0 1 .708 0l3 3a.5.5 0 0 1 0 .708l-10 10a.5.5 0 0 1-.168.11l-5 2a.5.5 0 0 1-.65-.65l2-5a.5.5 0 0 1 .11-.168l10-10zM11.207 2.5 13.5 4.793 14.793 3.5 12.5 1.207 11.207 2.5zm1.586 3L10.5 3.207 4 9.707V10h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.5h.293l6.5-6.5zm-9.761 5.175-.106.106-1.528 3.821 3.821-1.528.106-.106A.5.5 0 0 1 5 12.5V12h-.5a.5.5 0 0 1-.5-.5V11h-.5a.5.5 0 0 1-.468-.325z"/></svg></button>
                         </td>
+                        {% endif %}
                     </tr>
                     {% else %}
                     <tr>
-                        <td colspan="{{ 11 if current_user.is_admin() else 10 }}" class="empty-state">
+                        <td colspan="{{ 10 if current_user.is_admin() else 7 }}" class="empty-state">
                             <p>입고 내역이 없습니다.</p>
                         </td>
                     </tr>
@@ -156,6 +152,7 @@
     </div>
 </div>
 
+{% if current_user.is_admin() %}
 <!-- Stock In Modal -->
 <div class="modal fade" id="stockinModal" tabindex="-1" aria-labelledby="stockinModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-lg">
@@ -171,26 +168,6 @@
                             <label class="form-label">입고일 <span class="required">*</span></label>
                             <input type="date" name="stock_date" id="modal_stock_date" class="form-control" required>
                         </div>
-                        {% if current_user.is_admin() %}
-                        <div class="col-md-4">
-                            <label class="form-label">지사</label>
-                            <select name="branch_id" id="modal_branch_id" class="form-select">
-                                <option value="">선택</option>
-                                {% for branch in branches %}
-                                <option value="{{ branch.id }}">{{ branch.name }}</option>
-                                {% endfor %}
-                            </select>
-                        </div>
-                        <div class="col-md-4">
-                            <label class="form-label">입고업체</label>
-                            <select name="supplier_id" id="modal_supplier_id" class="form-select">
-                                <option value="">선택</option>
-                                {% for supplier in suppliers %}
-                                <option value="{{ supplier.id }}">{{ supplier.company_name }}</option>
-                                {% endfor %}
-                            </select>
-                        </div>
-                        {% else %}
                         <div class="col-md-8">
                             <label class="form-label">입고업체</label>
                             <select name="supplier_id" id="modal_supplier_id" class="form-select">
@@ -200,7 +177,6 @@
                                 {% endfor %}
                             </select>
                         </div>
-                        {% endif %}
                         <div class="col-md-6">
                             <label class="form-label">프랜차이즈 <span class="required">*</span></label>
                             <select name="product_id" id="modal_product_id" class="form-select" required>
@@ -236,12 +212,64 @@
         </div>
     </div>
 </div>
+{% endif %}
 {% endblock %}
 
 {% block extra_js %}
 <script>
-const today = new Date().toISOString().split('T')[0];
 const isAdmin = {{ 'true' if current_user.is_admin() else 'false' }};
+
+// Franchise-Category mapping for filtering
+const franchiseCategoryData = [
+    {% for fc in franchise_category_data %}
+    {
+        id: {{ fc.id }},
+        name: {{ fc.name|tojson }},
+        categories: {{ fc.categories|tojson }}
+    }{% if not loop.last %},{% endif %}
+    {% endfor %}
+];
+
+// All franchise options for restoring
+const allFranchiseOptions = [];
+document.querySelectorAll('#filter_franchise_id option').forEach(opt => {
+    allFranchiseOptions.push({ value: opt.value, text: opt.textContent, selected: opt.selected });
+});
+
+// Filter franchise dropdown when category changes
+document.getElementById('filter_category').addEventListener('change', function() {
+    const category = this.value;
+    const franchiseSelect = document.getElementById('filter_franchise_id');
+    const currentValue = franchiseSelect.value;
+
+    franchiseSelect.innerHTML = '<option value="">전체</option>';
+
+    if (!category) {
+        allFranchiseOptions.forEach(opt => {
+            if (opt.value) {
+                const option = document.createElement('option');
+                option.value = opt.value;
+                option.textContent = opt.text;
+                if (opt.value === currentValue) option.selected = true;
+                franchiseSelect.appendChild(option);
+            }
+        });
+    } else {
+        const linkedIds = new Set();
+        franchiseCategoryData.filter(f => f.categories.includes(category)).forEach(f => {
+            linkedIds.add(String(f.id));
+        });
+        allFranchiseOptions.forEach(opt => {
+            if (opt.value && linkedIds.has(opt.value)) {
+                const option = document.createElement('option');
+                option.value = opt.value;
+                option.textContent = opt.text;
+                if (opt.value === currentValue) option.selected = true;
+                franchiseSelect.appendChild(option);
+            }
+        });
+    }
+});
 
 // Format number with commas
 function formatNumber(num) {
@@ -279,30 +307,96 @@ if (toggleStockinItemsBtn) {
     });
 }
 
-// Auto-fill unit price when product is selected
-document.getElementById('modal_product_id').addEventListener('change', function() {
-    const selectedOption = this.options[this.selectedIndex];
-    if (selectedOption.dataset.price) {
-        const price = parseInt(selectedOption.dataset.price);
-        document.getElementById('modal_unit_price').value = price;
-        document.getElementById('modal_unit_price_display').value = formatNumber(price);
-    } else {
-        document.getElementById('modal_unit_price').value = '';
-        document.getElementById('modal_unit_price_display').value = '';
-    }
-});
+if (isAdmin) {
+    // Auto-fill unit price when product is selected
+    document.getElementById('modal_product_id').addEventListener('change', function() {
+        const selectedOption = this.options[this.selectedIndex];
+        if (selectedOption.dataset.price) {
+            const price = parseInt(selectedOption.dataset.price);
+            document.getElementById('modal_unit_price').value = price;
+            document.getElementById('modal_unit_price_display').value = formatNumber(price);
+        } else {
+            document.getElementById('modal_unit_price').value = '';
+            document.getElementById('modal_unit_price_display').value = '';
+        }
+    });
 
-// Handle unit price input formatting
-document.getElementById('modal_unit_price_display').addEventListener('input', function() {
-    const value = this.value.replace(/[^\d]/g, '');
-    if (value) {
-        const numValue = parseInt(value);
-        this.value = formatNumber(numValue);
-        document.getElementById('modal_unit_price').value = numValue;
-    } else {
-        document.getElementById('modal_unit_price').value = '';
+    // Handle unit price input formatting
+    document.getElementById('modal_unit_price_display').addEventListener('input', function() {
+        const value = this.value.replace(/[^\d]/g, '');
+        if (value) {
+            const numValue = parseInt(value);
+            this.value = formatNumber(numValue);
+            document.getElementById('modal_unit_price').value = numValue;
+        } else {
+            document.getElementById('modal_unit_price').value = '';
+        }
+    });
+
+    // Select all checkbox functionality
+    const selectAllCheckbox = document.getElementById('selectAllCheckbox');
+    const itemCheckboxes = document.querySelectorAll('.item-checkbox');
+    const deleteSelectedBtn = document.getElementById('deleteSelectedBtn');
+
+    function updateDeleteButtonVisibility() {
+        const checkedBoxes = document.querySelectorAll('.item-checkbox:checked');
+        deleteSelectedBtn.style.display = checkedBoxes.length > 0 ? 'block' : 'none';
     }
-});
+
+    selectAllCheckbox.addEventListener('change', function() {
+        itemCheckboxes.forEach(checkbox => {
+            checkbox.checked = this.checked;
+        });
+        updateDeleteButtonVisibility();
+    });
+
+    itemCheckboxes.forEach(checkbox => {
+        checkbox.addEventListener('change', function() {
+            const allChecked = Array.from(itemCheckboxes).every(cb => cb.checked);
+            const someChecked = Array.from(itemCheckboxes).some(cb => cb.checked);
+            selectAllCheckbox.checked = allChecked;
+            selectAllCheckbox.indeterminate = someChecked && !allChecked;
+            updateDeleteButtonVisibility();
+        });
+    });
+
+    // Delete selected items
+    deleteSelectedBtn.addEventListener('click', function() {
+        const checkedBoxes = document.querySelectorAll('.item-checkbox:checked');
+        const itemIds = Array.from(checkedBoxes).map(cb => cb.value);
+
+        if (itemIds.length === 0) {
+            alert('삭제할 항목을 선택해주세요.');
+            return;
+        }
+
+        if (!confirm(`선택한 ${itemIds.length}개의 항목을 삭제하시겠습니까?`)) {
+            return;
+        }
+
+        // Send delete request
+        fetch('{{ url_for("admin.stockins_delete") }}', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ item_ids: itemIds })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                alert(data.message || '삭제되었습니다.');
+                location.reload();
+            } else {
+                alert(data.message || '삭제 중 오류가 발생했습니다.');
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('삭제 중 오류가 발생했습니다.');
+        });
+    });
+}
 
 function openEditModal(stockinId, stockDate, branchId, supplierId, productId, quantity, unitPrice, memo) {
     document.getElementById('stockinModalLabel').textContent = '입고 변경';
@@ -311,9 +405,6 @@ function openEditModal(stockinId, stockDate, branchId, supplierId, productId, qu
 
     // Fill form
     document.getElementById('modal_stock_date').value = stockDate;
-    if (isAdmin) {
-        document.getElementById('modal_branch_id').value = branchId;
-    }
     document.getElementById('modal_supplier_id').value = supplierId;
     document.getElementById('modal_product_id').value = productId;
     document.getElementById('modal_quantity').value = quantity;
@@ -325,69 +416,5 @@ function openEditModal(stockinId, stockDate, branchId, supplierId, productId, qu
     const modal = new bootstrap.Modal(document.getElementById('stockinModal'));
     modal.show();
 }
-
-// Select all checkbox functionality
-const selectAllCheckbox = document.getElementById('selectAllCheckbox');
-const itemCheckboxes = document.querySelectorAll('.item-checkbox');
-const deleteSelectedBtn = document.getElementById('deleteSelectedBtn');
-
-function updateDeleteButtonVisibility() {
-    const checkedBoxes = document.querySelectorAll('.item-checkbox:checked');
-    deleteSelectedBtn.style.display = checkedBoxes.length > 0 ? 'block' : 'none';
-}
-
-selectAllCheckbox.addEventListener('change', function() {
-    itemCheckboxes.forEach(checkbox => {
-        checkbox.checked = this.checked;
-    });
-    updateDeleteButtonVisibility();
-});
-
-itemCheckboxes.forEach(checkbox => {
-    checkbox.addEventListener('change', function() {
-        const allChecked = Array.from(itemCheckboxes).every(cb => cb.checked);
-        const someChecked = Array.from(itemCheckboxes).some(cb => cb.checked);
-        selectAllCheckbox.checked = allChecked;
-        selectAllCheckbox.indeterminate = someChecked && !allChecked;
-        updateDeleteButtonVisibility();
-    });
-});
-
-// Delete selected items
-deleteSelectedBtn.addEventListener('click', function() {
-    const checkedBoxes = document.querySelectorAll('.item-checkbox:checked');
-    const itemIds = Array.from(checkedBoxes).map(cb => cb.value);
-
-    if (itemIds.length === 0) {
-        alert('삭제할 항목을 선택해주세요.');
-        return;
-    }
-
-    if (!confirm(`선택한 ${itemIds.length}개의 항목을 삭제하시겠습니까?`)) {
-        return;
-    }
-
-    // Send delete request
-    fetch('{{ url_for("admin.stockins_delete") }}', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ item_ids: itemIds })
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
-            alert(data.message || '삭제되었습니다.');
-            location.reload();
-        } else {
-            alert(data.message || '삭제 중 오류가 발생했습니다.');
-        }
-    })
-    .catch(error => {
-        console.error('Error:', error);
-        alert('삭제 중 오류가 발생했습니다.');
-    });
-});
 </script>
 {% endblock %}

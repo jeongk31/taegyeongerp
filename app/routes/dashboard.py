@@ -4,6 +4,7 @@ from app.utils.decorators import admin_required, branch_required, driver_require
 from app.models import User, Branch, Franchise, Store, Product, ShipmentItem, StockIn, Jungsung, ERPRegistration
 from app import db
 from sqlalchemy import func
+from sqlalchemy.orm import joinedload
 from datetime import date, datetime, timedelta
 
 dashboard_bp = Blueprint('dashboard', __name__)
@@ -135,34 +136,62 @@ def branch():
         StockIn.stock_date >= first_of_month
     ).scalar() or 0
 
-    # Inventory status
-    total_stock_in = db.session.query(func.sum(StockIn.quantity)).filter(
+    # Inventory per category - batch query using JOINs (2 queries instead of 2*N)
+    stockin_by_cat = db.session.query(
+        Product.category,
+        func.sum(StockIn.quantity)
+    ).join(Product, StockIn.product_id == Product.id).filter(
         StockIn.is_active == True,
-        StockIn.branch_id == branch_id
-    ).scalar() or 0
+        StockIn.branch_id == branch_id,
+        Product.is_active == True
+    ).group_by(Product.category).all()
 
-    total_shipped = db.session.query(func.sum(ShipmentItem.quantity)).filter(
+    shipped_by_cat = db.session.query(
+        Product.category,
+        func.sum(ShipmentItem.quantity)
+    ).join(Product, ShipmentItem.product_id == Product.id).filter(
         ShipmentItem.is_active == True,
-        ShipmentItem.branch_id == branch_id
-    ).scalar() or 0
+        ShipmentItem.branch_id == branch_id,
+        Product.is_active == True
+    ).group_by(Product.category).all()
 
-    current_inventory = total_stock_in - total_shipped
+    stockin_dict = {cat: qty or 0 for cat, qty in stockin_by_cat}
+    shipped_dict = {cat: qty or 0 for cat, qty in shipped_by_cat}
+    all_cats = sorted(set(stockin_dict.keys()) | set(shipped_dict.keys()))
 
-    # Recent shipments
+    inventory_by_category = []
+    total_inventory = 0
+    for cat in all_cats:
+        cat_stockin = stockin_dict.get(cat, 0)
+        cat_shipped = shipped_dict.get(cat, 0)
+        cat_inventory = cat_stockin - cat_shipped
+        total_inventory += cat_inventory
+        inventory_by_category.append({
+            'category': cat,
+            'stockin': cat_stockin,
+            'shipped': cat_shipped,
+            'inventory': cat_inventory
+        })
+
+    # Recent shipments with eager loading
     recent_shipments = ShipmentItem.query.filter(
         ShipmentItem.is_active == True,
         ShipmentItem.branch_id == branch_id
+    ).options(
+        joinedload(ShipmentItem.product).joinedload(Product.franchise),
+        joinedload(ShipmentItem.store),
+        joinedload(ShipmentItem.jungsung)
     ).order_by(ShipmentItem.shipment_date.desc()).limit(10).all()
 
     return render_template('dashboard/branch.html',
                            store_count=store_count,
                            jungsung_count=jungsung_count,
-                           franchise_count=franchise_count,
                            today_shipments=today_shipments,
                            today_stockins=today_stockins,
                            month_shipments=month_shipments,
                            month_stockins=month_stockins,
-                           current_inventory=current_inventory,
+                           inventory_by_category=inventory_by_category,
+                           total_inventory=total_inventory,
                            recent_shipments=recent_shipments)
 
 
@@ -245,19 +274,20 @@ def jungsung():
         ERPRegistration.registration_date >= first_of_month
     ).count()
 
-    # Today's total stockin quantity
-    today_stockin_qty = db.session.query(func.sum(ERPRegistration.stockin_qty)).filter(
+    # Today's totals from category_quantities JSON
+    today_regs = ERPRegistration.query.filter(
         ERPRegistration.jungsung_id == jungsung_id,
         ERPRegistration.registration_date == today,
         ERPRegistration.is_return == False
-    ).scalar() or 0
-
-    # Today's total waste quantity
-    today_waste_qty = db.session.query(func.sum(ERPRegistration.waste_qty)).filter(
-        ERPRegistration.jungsung_id == jungsung_id,
-        ERPRegistration.registration_date == today,
-        ERPRegistration.is_return == False
-    ).scalar() or 0
+    ).all()
+    today_stockin_qty = sum(
+        sum(v for k, v in reg.get_category_quantities().items() if k != '폐유')
+        for reg in today_regs
+    )
+    today_waste_qty = sum(
+        reg.get_category_quantities().get('폐유', 0)
+        for reg in today_regs
+    )
 
     # Recent registrations
     recent_registrations = ERPRegistration.query.filter(

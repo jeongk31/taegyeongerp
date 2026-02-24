@@ -45,6 +45,8 @@
                         <th class="text-center" style="width: 60px;">미사용</th>
                         <th class="text-center" style="width: 60px;">폐유미수거</th>
                         <th class="text-center" style="width: 50px;">폐업</th>
+                        <th class="text-center" style="width: 60px;">악성미수</th>
+                        <th class="text-center" style="width: 60px;">외부사입</th>
                         <th style="width: 80px;"></th>
                     </tr>
                 </thead>
@@ -67,6 +69,12 @@
                         </td>
                         <td class="text-center">
                             {% if store.closed_store %}<span class="status-marker status-danger"></span>{% endif %}
+                        </td>
+                        <td class="text-center">
+                            {% if store.bad_debt_store %}<span class="status-marker status-danger"></span>{% endif %}
+                        </td>
+                        <td class="text-center">
+                            {% if store.external_purchase_store %}<span class="status-marker status-danger"></span>{% endif %}
                         </td>
                         <td>
                             <div class="d-flex gap-1">

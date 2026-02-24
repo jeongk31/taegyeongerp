@@ -5,8 +5,54 @@ from app.models.user import User, Branch, Franchise, Store, Jungsung, Supplier, 
 from app.utils.decorators import admin_required, branch_required, jungsung_required, franchise_required
 from datetime import datetime, date, timedelta
 from sqlalchemy import func, extract, or_, and_
+from sqlalchemy.orm import joinedload
 
 admin_bp = Blueprint('admin', __name__, url_prefix='/admin')
+
+
+def build_month_weeks(year, month):
+    """Build Mon-Sun aligned weeks for a month.
+    Week 1: 1st of month through first Sunday.
+    Subsequent weeks: Monday through Sunday.
+    Last week: Last Monday through end of month."""
+    from calendar import monthrange
+    last_day_num = monthrange(year, month)[1]
+    first_day = date(year, month, 1)
+    last_day = date(year, month, last_day_num)
+    weeks = []
+    wn = 1
+    # Week 1: 1st to first Sunday
+    first_sunday_offset = (6 - first_day.weekday()) % 7
+    first_week_end = min(first_day + timedelta(days=first_sunday_offset), last_day)
+    weeks.append({'num': wn, 'start': first_day, 'end': first_week_end})
+    wn += 1
+    # Subsequent weeks: Monday to Sunday
+    current = first_week_end + timedelta(days=1)
+    while current <= last_day:
+        week_end = min(current + timedelta(days=6), last_day)
+        weeks.append({'num': wn, 'start': current, 'end': week_end})
+        current = week_end + timedelta(days=1)
+        wn += 1
+    return weeks
+
+
+# ============================================
+# 사용자 관리
+# ============================================
+
+@admin_bp.route('/users')
+@login_required
+@admin_required
+def users_list():
+    """All user accounts list - admin only"""
+    role_filter = request.args.get('role', '')
+    query = User.query
+
+    if role_filter:
+        query = query.filter(User.role == role_filter)
+
+    users = query.order_by(User.created_at.desc()).all()
+    return render_template('admin/users_list.html', users=users, role_filter=role_filter)
 
 
 # ============================================
@@ -554,8 +600,9 @@ def categories_delete(id):
 
 @admin_bp.route('/franchises')
 @login_required
+@admin_required
 def franchises_list():
-    """Franchise list - accessible by admin and branch users"""
+    """Franchise list - admin only"""
     sort = request.args.get('sort', 'id')
     order = request.args.get('order', 'asc')
 
@@ -578,7 +625,8 @@ def franchises_list():
     else:
         franchises = Franchise.query.order_by(order_col).all()
 
-    return render_template('admin/franchises_list.html', franchises=franchises, sort=sort, order=order)
+    categories = Category.query.filter_by(is_active=True).order_by(Category.name).all()
+    return render_template('admin/franchises_list.html', franchises=franchises, categories=categories, sort=sort, order=order)
 
 
 @admin_bp.route('/stores')
@@ -798,6 +846,16 @@ def franchises_add_modal():
     db.session.add(franchise)
     db.session.flush()
 
+    # Save linked categories
+    category_ids = request.form.getlist('category_ids')
+    for cat_id in category_ids:
+        try:
+            category = Category.query.get(int(cat_id))
+            if category:
+                franchise.categories.append(category)
+        except (ValueError, TypeError):
+            pass
+
     user = User(
         username=username,
         name=contact_person or name,
@@ -840,6 +898,18 @@ def franchises_edit_modal(id):
     franchise.address = address
     franchise.phone = phone
     franchise.contact_person = contact_person
+
+    # Update linked categories
+    franchise.categories = []
+    category_ids = request.form.getlist('category_ids')
+    for cat_id in category_ids:
+        try:
+            category = Category.query.get(int(cat_id))
+            if category:
+                franchise.categories.append(category)
+        except (ValueError, TypeError):
+            pass
+
     db.session.commit()
 
     flash('프랜차이즈 정보가 수정되었습니다.', 'success')
@@ -1041,8 +1111,9 @@ def stores_delete(id):
 
 @admin_bp.route('/products')
 @login_required
+@admin_required
 def products_list():
-    """Products list - accessible by admin and branch users"""
+    """Products list - admin only"""
     sort = request.args.get('sort', 'id')
     order = request.args.get('order', 'asc')
 
@@ -1066,9 +1137,12 @@ def products_list():
             Store.branch_id == current_user.branch_id,
             Store.is_active == True
         ).distinct().all()
-        franchise_ids = [f[0] for f in franchise_ids]
-        query = query.filter(Product.franchise_id.in_(franchise_ids))
-        franchises = Franchise.query.filter(Franchise.id.in_(franchise_ids)).order_by(Franchise.name).all()
+        franchise_ids = [f[0] for f in franchise_ids if f[0] is not None]
+        if franchise_ids:
+            query = query.filter(Product.franchise_id.in_(franchise_ids))
+            franchises = Franchise.query.filter(Franchise.id.in_(franchise_ids)).order_by(Franchise.name).all()
+        else:
+            franchises = Franchise.query.filter_by(is_active=True).order_by(Franchise.name).all()
     else:
         franchises = Franchise.query.filter_by(is_active=True).order_by(Franchise.name).all()
 
@@ -1188,10 +1262,9 @@ def products_delete(id):
 def shipments_list():
     # Get filter parameters
     category = request.args.get('category')
-    product_id = request.args.get('product_id', type=int)
+    franchise_id = request.args.get('franchise_id', type=int)
     branch_id = request.args.get('branch_id', type=int)
     jungsung_id = request.args.get('jungsung_id', type=int)
-    store_id = request.args.get('store_id', type=int)
     date_from = request.args.get('date_from')
     date_to = request.args.get('date_to')
 
@@ -1199,106 +1272,121 @@ def shipments_list():
     date_from_parsed = datetime.strptime(date_from, '%Y-%m-%d').date() if date_from else None
     date_to_parsed = datetime.strptime(date_to, '%Y-%m-%d').date() if date_to else None
 
-    # Base query for shipment items (use ShipmentItem.shipment_date for per-item dates)
-    query = ShipmentItem.query.filter(ShipmentItem.is_active == True)
+    if current_user.is_admin():
+        # Admin 출고 = StockIn records with branch_id (admin shipped to branches)
+        query = StockIn.query.filter(StockIn.is_active == True, StockIn.branch_id != None)
+        if branch_id:
+            query = query.filter(StockIn.branch_id == branch_id)
+        if category or franchise_id:
+            query = query.join(Product)
+            if category:
+                query = query.filter(Product.category == category)
+            if franchise_id:
+                query = query.filter(Product.franchise_id == franchise_id)
+        if date_from_parsed:
+            query = query.filter(StockIn.stock_date >= date_from_parsed)
+        if date_to_parsed:
+            query = query.filter(StockIn.stock_date <= date_to_parsed)
+        items = query.options(
+            joinedload(StockIn.product).joinedload(Product.franchise),
+            joinedload(StockIn.branch),
+            joinedload(StockIn.creator)
+        ).order_by(StockIn.stock_date.desc(), StockIn.id.desc()).all()
 
-    # Branch users only see their branch's data
-    if not current_user.is_admin():
+        # Stats use StockIn for admin
+        today = date.today()
+        first_of_month = today.replace(day=1)
+        first_of_prev_month = (first_of_month - timedelta(days=1)).replace(day=1)
+
+        products_query = Product.query.filter_by(is_active=True)
+        if category:
+            products_query = products_query.filter(Product.category == category)
+        if franchise_id:
+            products_query = products_query.filter(Product.franchise_id == franchise_id)
+        products_for_stats = products_query.all()
+
+        product_stats = []
+        for product in products_for_stats:
+            base_filter = [
+                StockIn.product_id == product.id,
+                StockIn.is_active == True,
+                StockIn.branch_id != None
+            ]
+            if branch_id:
+                base_filter.append(StockIn.branch_id == branch_id)
+
+            if date_from_parsed or date_to_parsed:
+                filtered_qty = db.session.query(func.sum(StockIn.quantity)).filter(*base_filter)
+                if date_from_parsed:
+                    filtered_qty = filtered_qty.filter(StockIn.stock_date >= date_from_parsed)
+                if date_to_parsed:
+                    filtered_qty = filtered_qty.filter(StockIn.stock_date <= date_to_parsed)
+                filtered_qty = filtered_qty.scalar() or 0
+                product_stats.append({'product': product, 'today': 0, 'this_month': filtered_qty, 'prev_month': 0})
+            else:
+                today_qty = db.session.query(func.sum(StockIn.quantity)).filter(*base_filter, StockIn.stock_date == today).scalar() or 0
+                month_qty = db.session.query(func.sum(StockIn.quantity)).filter(*base_filter, StockIn.stock_date >= first_of_month, StockIn.stock_date <= today).scalar() or 0
+                prev_month_qty = db.session.query(func.sum(StockIn.quantity)).filter(*base_filter, StockIn.stock_date >= first_of_prev_month, StockIn.stock_date < first_of_month).scalar() or 0
+                product_stats.append({'product': product, 'today': today_qty, 'this_month': month_qty, 'prev_month': prev_month_qty})
+
+    else:
+        # Branch 출고 = ShipmentItem records
+        query = ShipmentItem.query.filter(ShipmentItem.is_active == True)
         query = query.filter(ShipmentItem.branch_id == current_user.branch_id)
-
-    # Apply filters
-    if category:
-        query = query.join(Product).filter(Product.category == category)
-    if product_id:
-        query = query.filter(ShipmentItem.product_id == product_id)
-    if branch_id and current_user.is_admin():  # Only admin can filter by branch
-        query = query.filter(ShipmentItem.branch_id == branch_id)
-    if jungsung_id:
-        query = query.filter(ShipmentItem.jungsung_id == jungsung_id)
-    if store_id:
-        query = query.filter(ShipmentItem.store_id == store_id)
-    if date_from_parsed:
-        query = query.filter(ShipmentItem.shipment_date >= date_from_parsed)
-    if date_to_parsed:
-        query = query.filter(ShipmentItem.shipment_date <= date_to_parsed)
-
-    # Get shipment items ordered by per-item date
-    items = query.order_by(ShipmentItem.shipment_date.desc(), ShipmentItem.id.desc()).all()
-
-    # Calculate summary stats by product with applied filters
-    today = date.today()
-    first_of_month = today.replace(day=1)
-    first_of_prev_month = (first_of_month - timedelta(days=1)).replace(day=1)
-
-    # Get products for summary (filtered by category if specified)
-    products_query = Product.query.filter_by(is_active=True)
-    if category:
-        products_query = products_query.filter(Product.category == category)
-    if product_id:
-        products_query = products_query.filter(Product.id == product_id)
-    products_for_stats = products_query.all()
-
-    product_stats = []
-
-    for product in products_for_stats:
-        # Base filter with all applicable filters
-        base_filter = [
-            ShipmentItem.product_id == product.id,
-            ShipmentItem.is_active == True
-        ]
-        if not current_user.is_admin():
-            base_filter.append(ShipmentItem.branch_id == current_user.branch_id)
-        if branch_id and current_user.is_admin():
-            base_filter.append(ShipmentItem.branch_id == branch_id)
+        if category or franchise_id:
+            query = query.join(Product)
+            if category:
+                query = query.filter(Product.category == category)
+            if franchise_id:
+                query = query.filter(Product.franchise_id == franchise_id)
         if jungsung_id:
-            base_filter.append(ShipmentItem.jungsung_id == jungsung_id)
-        if store_id:
-            base_filter.append(ShipmentItem.store_id == store_id)
+            query = query.filter(ShipmentItem.jungsung_id == jungsung_id)
+        if date_from_parsed:
+            query = query.filter(ShipmentItem.shipment_date >= date_from_parsed)
+        if date_to_parsed:
+            query = query.filter(ShipmentItem.shipment_date <= date_to_parsed)
+        items = query.options(
+            joinedload(ShipmentItem.product).joinedload(Product.franchise),
+            joinedload(ShipmentItem.branch),
+            joinedload(ShipmentItem.jungsung),
+            joinedload(ShipmentItem.creator)
+        ).order_by(ShipmentItem.shipment_date.desc(), ShipmentItem.id.desc()).all()
 
-        # Apply date filters for stats calculation
-        # If date filter is set, use those dates; otherwise use default periods
-        if date_from_parsed or date_to_parsed:
-            # When date filter is applied, show filtered total in 'this_month' column
-            filtered_qty = db.session.query(func.sum(ShipmentItem.quantity)).filter(*base_filter)
-            if date_from_parsed:
-                filtered_qty = filtered_qty.filter(ShipmentItem.shipment_date >= date_from_parsed)
-            if date_to_parsed:
-                filtered_qty = filtered_qty.filter(ShipmentItem.shipment_date <= date_to_parsed)
-            filtered_qty = filtered_qty.scalar() or 0
+        # Stats use ShipmentItem for branch
+        today = date.today()
+        first_of_month = today.replace(day=1)
+        first_of_prev_month = (first_of_month - timedelta(days=1)).replace(day=1)
 
-            product_stats.append({
-                'product': product,
-                'today': 0,
-                'this_month': filtered_qty,
-                'prev_month': 0
-            })
-        else:
-            # Today's quantity
-            today_qty = db.session.query(func.sum(ShipmentItem.quantity)).filter(
-                *base_filter,
-                ShipmentItem.shipment_date == today
-            ).scalar() or 0
+        products_query = Product.query.filter_by(is_active=True)
+        if category:
+            products_query = products_query.filter(Product.category == category)
+        if franchise_id:
+            products_query = products_query.filter(Product.franchise_id == franchise_id)
+        products_for_stats = products_query.all()
 
-            # This month's quantity
-            month_qty = db.session.query(func.sum(ShipmentItem.quantity)).filter(
-                *base_filter,
-                ShipmentItem.shipment_date >= first_of_month,
-                ShipmentItem.shipment_date <= today
-            ).scalar() or 0
+        product_stats = []
+        for product in products_for_stats:
+            base_filter = [
+                ShipmentItem.product_id == product.id,
+                ShipmentItem.is_active == True,
+                ShipmentItem.branch_id == current_user.branch_id
+            ]
+            if jungsung_id:
+                base_filter.append(ShipmentItem.jungsung_id == jungsung_id)
 
-            # Previous month's quantity
-            prev_month_qty = db.session.query(func.sum(ShipmentItem.quantity)).filter(
-                *base_filter,
-                ShipmentItem.shipment_date >= first_of_prev_month,
-                ShipmentItem.shipment_date < first_of_month
-            ).scalar() or 0
-
-            product_stats.append({
-                'product': product,
-                'today': today_qty,
-                'this_month': month_qty,
-                'prev_month': prev_month_qty
-            })
+            if date_from_parsed or date_to_parsed:
+                filtered_qty = db.session.query(func.sum(ShipmentItem.quantity)).filter(*base_filter)
+                if date_from_parsed:
+                    filtered_qty = filtered_qty.filter(ShipmentItem.shipment_date >= date_from_parsed)
+                if date_to_parsed:
+                    filtered_qty = filtered_qty.filter(ShipmentItem.shipment_date <= date_to_parsed)
+                filtered_qty = filtered_qty.scalar() or 0
+                product_stats.append({'product': product, 'today': 0, 'this_month': filtered_qty, 'prev_month': 0})
+            else:
+                today_qty = db.session.query(func.sum(ShipmentItem.quantity)).filter(*base_filter, ShipmentItem.shipment_date == today).scalar() or 0
+                month_qty = db.session.query(func.sum(ShipmentItem.quantity)).filter(*base_filter, ShipmentItem.shipment_date >= first_of_month, ShipmentItem.shipment_date <= today).scalar() or 0
+                prev_month_qty = db.session.query(func.sum(ShipmentItem.quantity)).filter(*base_filter, ShipmentItem.shipment_date >= first_of_prev_month, ShipmentItem.shipment_date < first_of_month).scalar() or 0
+                product_stats.append({'product': product, 'today': today_qty, 'this_month': month_qty, 'prev_month': prev_month_qty})
 
     # Get data for filters
     categories = db.session.query(Product.category).filter(Product.is_active == True).distinct().all()
@@ -1306,39 +1394,54 @@ def shipments_list():
 
     if current_user.is_admin():
         branches = Branch.query.filter_by(is_active=True).order_by(Branch.name).all()
-        jungsungs = Jungsung.query.filter_by(is_active=True).order_by(Jungsung.business_name).all()
-        stores = Store.query.filter_by(is_active=True).order_by(Store.name).all()
+        jungsungs = []
+        stores = []
         all_products = Product.query.filter_by(is_active=True).order_by(Product.name).all()
     else:
         branches = [current_user.branch] if current_user.branch else []
         jungsungs = Jungsung.query.filter_by(is_active=True, branch_id=current_user.branch_id).order_by(Jungsung.business_name).all()
         stores = Store.query.filter_by(is_active=True, branch_id=current_user.branch_id).order_by(Store.name).all()
 
-        # Get products from franchises that have stores in this branch
         franchise_ids = db.session.query(Store.franchise_id).filter(
             Store.branch_id == current_user.branch_id,
             Store.is_active == True
         ).distinct().all()
-        franchise_ids = [f[0] for f in franchise_ids]
-        all_products = Product.query.filter(
-            Product.is_active == True,
-            Product.franchise_id.in_(franchise_ids)
-        ).order_by(Product.name).all()
+        franchise_ids = [f[0] for f in franchise_ids if f[0] is not None]
+        if franchise_ids:
+            all_products = Product.query.filter(
+                Product.is_active == True,
+                Product.franchise_id.in_(franchise_ids)
+            ).order_by(Product.name).all()
+        else:
+            all_products = Product.query.filter_by(is_active=True).order_by(Product.name).all()
+
+    # Build unique franchise list and franchise-category data for JS filtering
+    all_franchises = Franchise.query.filter_by(is_active=True).options(
+        joinedload(Franchise.categories)
+    ).order_by(Franchise.name).all()
+    franchise_category_data = []
+    for f in all_franchises:
+        franchise_category_data.append({
+            'id': f.id,
+            'name': f.name,
+            'categories': [c.name for c in f.categories]
+        })
 
     return render_template('admin/shipments_list.html',
                            items=items,
                            product_stats=product_stats,
                            products=all_products,
+                           franchises=all_franchises,
+                           franchise_category_data=franchise_category_data,
                            categories=categories,
                            branches=branches,
                            jungsungs=jungsungs,
                            stores=stores,
                            filters={
                                'category': category,
-                               'product_id': product_id,
+                               'franchise_id': franchise_id,
                                'branch_id': branch_id,
                                'jungsung_id': jungsung_id,
-                               'store_id': store_id,
                                'date_from': date_from,
                                'date_to': date_to
                            })
@@ -1368,11 +1471,26 @@ def shipments_create():
             Store.branch_id == current_user.branch_id,
             Store.is_active == True
         ).distinct().all()
-        franchise_ids = [f[0] for f in franchise_ids]
-        products = Product.query.filter(
-            Product.is_active == True,
-            Product.franchise_id.in_(franchise_ids)
-        ).order_by(Product.category, Product.name).all()
+        franchise_ids = [f[0] for f in franchise_ids if f[0] is not None]
+        if franchise_ids:
+            products = Product.query.filter(
+                Product.is_active == True,
+                Product.franchise_id.in_(franchise_ids)
+            ).order_by(Product.category, Product.name).all()
+        else:
+            # Fallback: show all active products if no franchise match
+            products = Product.query.filter_by(is_active=True).order_by(Product.category, Product.name).all()
+
+    all_franchises = Franchise.query.filter_by(is_active=True).options(
+        joinedload(Franchise.categories)
+    ).order_by(Franchise.name).all()
+    franchise_category_data = []
+    for f in all_franchises:
+        franchise_category_data.append({
+            'id': f.id,
+            'name': f.name,
+            'categories': [c.name for c in f.categories]
+        })
 
     return render_template('admin/shipments_create.html',
                            branches=branches,
@@ -1380,6 +1498,8 @@ def shipments_create():
                            stores=stores,
                            products=products,
                            categories=categories,
+                           franchises=all_franchises,
+                           franchise_category_data=franchise_category_data,
                            today=date.today().strftime('%Y-%m-%d'))
 
 
@@ -1394,7 +1514,6 @@ def shipments_submit():
     shipment_dates = request.form.getlist('shipment_date[]')
     branch_ids = request.form.getlist('branch_id[]')
     jungsung_ids = request.form.getlist('jungsung_id[]')
-    store_ids = request.form.getlist('store_id[]')
     product_ids = request.form.getlist('product_id[]')
     quantities = request.form.getlist('quantity[]')
     unit_prices = request.form.getlist('unit_price[]')
@@ -1403,17 +1522,12 @@ def shipments_submit():
         flash('출고 항목을 추가해주세요.', 'danger')
         return redirect(url_for('admin.shipments_create'))
 
-    # Create shipment batch (use first item's date as batch date)
-    first_date = datetime.strptime(shipment_dates[0], '%Y-%m-%d').date() if shipment_dates else date.today()
-    shipment = Shipment(
-        shipment_date=first_date,
-        memo=memo
-    )
-    db.session.add(shipment)
-    db.session.flush()
-
-    # Add items with per-item dates
+    # Separate admin→지사 items (save as 입고 only) from regular shipments
+    shipment = None
     total = 0
+    stockin_count = 0
+    shipment_count = 0
+
     for i in range(len(product_ids)):
         if not product_ids[i] or not quantities[i] or not unit_prices[i]:
             continue
@@ -1432,24 +1546,56 @@ def shipments_submit():
         # Get jungsung_id if specified
         item_jungsung_id = int(jungsung_ids[i]) if i < len(jungsung_ids) and jungsung_ids[i] else None
 
-        item = ShipmentItem(
-            shipment_id=shipment.id,
-            shipment_date=item_date,
-            branch_id=item_branch_id,
-            jungsung_id=item_jungsung_id,
-            store_id=int(store_ids[i]) if store_ids[i] else None,
-            product_id=int(product_ids[i]),
-            quantity=qty,
-            unit_price=price,
-            total_price=item_total,
-            created_by=current_user.id  # Track who created this shipment
-        )
-        db.session.add(item)
+        if current_user.is_admin() and item_branch_id:
+            # Admin 출고 to 지사 → save as 입고 only (no 출고 record)
+            branch_stockin = StockIn(
+                stock_date=item_date,
+                branch_id=item_branch_id,
+                product_id=int(product_ids[i]),
+                quantity=qty,
+                unit_price=price,
+                total_price=item_total,
+                created_by=current_user.id
+            )
+            db.session.add(branch_stockin)
+            stockin_count += 1
+        else:
+            # Regular shipment (지사 출고)
+            if not shipment:
+                first_date = datetime.strptime(shipment_dates[0], '%Y-%m-%d').date() if shipment_dates else date.today()
+                shipment = Shipment(
+                    shipment_date=first_date,
+                    memo=memo
+                )
+                db.session.add(shipment)
+                db.session.flush()
 
-    shipment.total_amount = total
+            item = ShipmentItem(
+                shipment_id=shipment.id,
+                shipment_date=item_date,
+                branch_id=item_branch_id,
+                jungsung_id=item_jungsung_id,
+                product_id=int(product_ids[i]),
+                quantity=qty,
+                unit_price=price,
+                total_price=item_total,
+                created_by=current_user.id
+            )
+            db.session.add(item)
+            shipment_count += 1
+
+    if shipment:
+        shipment.total_amount = total
+
     db.session.commit()
 
-    flash('출고가 등록되었습니다.', 'success')
+    if stockin_count > 0 and shipment_count > 0:
+        flash(f'출고 {stockin_count + shipment_count}건이 등록되었습니다.', 'success')
+    elif stockin_count > 0:
+        flash(f'출고 {stockin_count}건이 등록되었습니다.', 'success')
+    else:
+        flash('출고가 등록되었습니다.', 'success')
+
     return redirect(url_for('admin.shipments_list'))
 
 
@@ -1500,7 +1646,6 @@ def shipments_edit(id):
     shipment_date_str = request.form.get('shipment_date')
     branch_id = request.form.get('branch_id') or None
     jungsung_id = request.form.get('jungsung_id') or None
-    store_id = request.form.get('store_id') or None
     product_id = request.form.get('product_id')
     quantity = request.form.get('quantity')
     unit_price = request.form.get('unit_price')
@@ -1521,7 +1666,6 @@ def shipments_edit(id):
     if current_user.is_admin():
         item.branch_id = int(branch_id) if branch_id else None
     item.jungsung_id = int(jungsung_id) if jungsung_id else None
-    item.store_id = int(store_id) if store_id else None
     item.product_id = int(product_id)
     item.quantity = qty
     item.unit_price = price
@@ -1589,7 +1733,7 @@ def api_jungsungs_by_branch(branch_id):
 def stockins_list():
     # Get filter parameters
     category = request.args.get('category')
-    product_id = request.args.get('product_id', type=int)
+    franchise_id = request.args.get('franchise_id', type=int)
     supplier_id = request.args.get('supplier_id', type=int)
     branch_id = request.args.get('branch_id', type=int)
     date_from = request.args.get('date_from')
@@ -1598,17 +1742,22 @@ def stockins_list():
     # Base query
     query = StockIn.query.filter_by(is_active=True)
 
-    # 지사 사용자인 경우 본인 지사 데이터만 표시
-    if current_user.is_branch() and current_user.branch_id:
+    # Admin sees only admin-level 입고 (branch_id IS NULL), branch users see their own
+    if current_user.is_admin():
+        if branch_id:
+            query = query.filter(StockIn.branch_id == branch_id)
+        else:
+            query = query.filter(StockIn.branch_id == None)
+    elif current_user.is_branch() and current_user.branch_id:
         query = query.filter(StockIn.branch_id == current_user.branch_id)
-    elif branch_id:
-        query = query.filter(StockIn.branch_id == branch_id)
 
-    # Apply filters
-    if category:
-        query = query.join(Product).filter(Product.category == category)
-    if product_id:
-        query = query.filter(StockIn.product_id == product_id)
+    # Apply filters (join Product once if needed)
+    if category or franchise_id:
+        query = query.join(Product)
+        if category:
+            query = query.filter(Product.category == category)
+        if franchise_id:
+            query = query.filter(Product.franchise_id == franchise_id)
     if supplier_id:
         query = query.filter(StockIn.supplier_id == supplier_id)
     if date_from:
@@ -1616,7 +1765,12 @@ def stockins_list():
     if date_to:
         query = query.filter(StockIn.stock_date <= datetime.strptime(date_to, '%Y-%m-%d').date())
 
-    stockins = query.order_by(StockIn.stock_date.desc(), StockIn.id.desc()).all()
+    stockins = query.options(
+        joinedload(StockIn.product).joinedload(Product.franchise),
+        joinedload(StockIn.supplier),
+        joinedload(StockIn.branch),
+        joinedload(StockIn.creator)
+    ).order_by(StockIn.stock_date.desc(), StockIn.id.desc()).all()
 
     # Get data for filters
     categories = db.session.query(Product.category).filter(Product.is_active == True).distinct().all()
@@ -1637,21 +1791,38 @@ def stockins_list():
             Store.branch_id == current_user.branch_id,
             Store.is_active == True
         ).distinct().all()
-        franchise_ids = [f[0] for f in franchise_ids]
-        products = Product.query.filter(
-            Product.is_active == True,
-            Product.franchise_id.in_(franchise_ids)
-        ).order_by(Product.name).all()
+        franchise_ids = [f[0] for f in franchise_ids if f[0] is not None]
+        if franchise_ids:
+            products = Product.query.filter(
+                Product.is_active == True,
+                Product.franchise_id.in_(franchise_ids)
+            ).order_by(Product.name).all()
+        else:
+            products = Product.query.filter_by(is_active=True).order_by(Product.name).all()
+
+    # Build unique franchise list and franchise-category data for JS filtering
+    all_franchises = Franchise.query.filter_by(is_active=True).options(
+        joinedload(Franchise.categories)
+    ).order_by(Franchise.name).all()
+    franchise_category_data = []
+    for f in all_franchises:
+        franchise_category_data.append({
+            'id': f.id,
+            'name': f.name,
+            'categories': [c.name for c in f.categories]
+        })
 
     return render_template('admin/stockins_list.html',
                            stockins=stockins,
                            products=products,
+                           franchises=all_franchises,
+                           franchise_category_data=franchise_category_data,
                            suppliers=suppliers,
                            branches=branches,
                            categories=categories,
                            filters={
                                'category': category,
-                               'product_id': product_id,
+                               'franchise_id': franchise_id,
                                'supplier_id': supplier_id,
                                'branch_id': branch_id,
                                'date_from': date_from,
@@ -1681,11 +1852,15 @@ def stockins_create():
             Store.branch_id == current_user.branch_id,
             Store.is_active == True
         ).distinct().all()
-        franchise_ids = [f[0] for f in franchise_ids]
-        products = Product.query.filter(
-            Product.is_active == True,
-            Product.franchise_id.in_(franchise_ids)
-        ).order_by(Product.category, Product.name).all()
+        franchise_ids = [f[0] for f in franchise_ids if f[0] is not None]
+        if franchise_ids:
+            products = Product.query.filter(
+                Product.is_active == True,
+                Product.franchise_id.in_(franchise_ids)
+            ).order_by(Product.category, Product.name).all()
+        else:
+            # Fallback: show all active products if no franchise match
+            products = Product.query.filter_by(is_active=True).order_by(Product.category, Product.name).all()
 
     return render_template('admin/stockins_create.html',
                            products=products,
@@ -1714,7 +1889,13 @@ def stockins_submit():
     try:
         for i in range(len(product_ids)):
             stock_date = datetime.strptime(stock_dates[i], '%Y-%m-%d').date()
-            branch_id = int(branch_ids[i]) if branch_ids[i] else (current_user.branch_id if current_user.is_branch() else None)
+            # Admin 입고 has no branch; branch users use their own branch
+            if current_user.is_admin():
+                branch_id = None
+            elif branch_ids and branch_ids[i]:
+                branch_id = int(branch_ids[i])
+            else:
+                branch_id = current_user.branch_id
             supplier_id = int(supplier_ids[i]) if supplier_ids[i] else None
             product_id = int(product_ids[i])
             qty = int(quantities[i])
@@ -1766,8 +1947,10 @@ def stockins_add():
         flash('올바른 값을 입력해주세요.', 'danger')
         return redirect(url_for('admin.stockins_list'))
 
-    # 지사 사용자인 경우 본인 지사로 설정
-    if current_user.is_branch() and current_user.branch_id:
+    # Admin 입고 has no branch; branch users use their own branch
+    if current_user.is_admin():
+        branch_id = None
+    elif current_user.is_branch() and current_user.branch_id:
         branch_id = current_user.branch_id
     elif branch_id:
         branch_id = int(branch_id)
@@ -1828,6 +2011,10 @@ def stockins_edit(id):
     stockin.memo = memo
     db.session.commit()
 
+    # Redirect to correct page based on context
+    if stockin.branch_id and current_user.is_admin():
+        flash('출고 정보가 수정되었습니다.', 'success')
+        return redirect(url_for('admin.shipments_list'))
     flash('입고 정보가 수정되었습니다.', 'success')
     return redirect(url_for('admin.stockins_list'))
 
@@ -2434,15 +2621,19 @@ def receivables():
             Store.branch_id == current_user.branch_id,
             Store.is_active == True
         ).distinct().all()
-        franchise_ids = [f[0] for f in franchise_ids]
-        all_franchises = Franchise.query.filter(
-            Franchise.is_active == True,
-            Franchise.id.in_(franchise_ids)
-        ).order_by(Franchise.name).all()
-        all_products = Product.query.filter(
-            Product.is_active == True,
-            Product.franchise_id.in_(franchise_ids)
-        ).order_by(Product.name).all()
+        franchise_ids = [f[0] for f in franchise_ids if f[0] is not None]
+        if franchise_ids:
+            all_franchises = Franchise.query.filter(
+                Franchise.is_active == True,
+                Franchise.id.in_(franchise_ids)
+            ).order_by(Franchise.name).all()
+            all_products = Product.query.filter(
+                Product.is_active == True,
+                Product.franchise_id.in_(franchise_ids)
+            ).order_by(Product.name).all()
+        else:
+            all_franchises = Franchise.query.filter_by(is_active=True).order_by(Franchise.name).all()
+            all_products = Product.query.filter_by(is_active=True).order_by(Product.name).all()
 
     # Calculate grand totals
     grand_total_unpaid = sum(row['total_unpaid'] for row in receivables_data)
@@ -2586,10 +2777,15 @@ def list_payments():
 @login_required
 @branch_required
 def erp_tracking():
-    """ERP Registration Tracking - Monthly and Date Range views by store
+    """ERP Registration Tracking - Monthly, Date Range, and Calendar views by store
     Shows data registered by 중상 users via ERPRegistration model"""
     import json
     from calendar import monthrange
+
+    search_type = request.args.get('search_type', 'default')
+
+    # Category filter
+    selected_category = request.args.get('category', '전체')
 
     # Get filter parameters
     year = request.args.get('year', type=int) or date.today().year
@@ -2609,8 +2805,12 @@ def erp_tracking():
     date_from_parsed = datetime.strptime(date_from, '%Y-%m-%d').date()
     date_to_parsed = datetime.strptime(date_to, '%Y-%m-%d').date()
 
-    # Get active categories
-    categories = Category.query.filter_by(is_active=True).order_by(Category.id).all()
+    # Get active categories, filtered by selection
+    all_categories = Category.query.filter_by(is_active=True).order_by(Category.id).all()
+    if selected_category == '전체':
+        categories = all_categories
+    else:
+        categories = [c for c in all_categories if c.name == selected_category]
     category_names = [cat.name for cat in categories]
 
     # Get stores based on user role
@@ -2635,22 +2835,8 @@ def erp_tracking():
                     totals[cat] += qty
         return totals
 
-    # Calculate week ranges for the selected month
-    _, last_day = monthrange(year, month)
-    weeks = []
-    week_num = 1
-    day = 1
-    while day <= last_day:
-        week_start = date(year, month, day)
-        week_end_day = min(day + 6, last_day)
-        week_end = date(year, month, week_end_day)
-        weeks.append({
-            'num': week_num,
-            'start': week_start,
-            'end': week_end
-        })
-        day = week_end_day + 1
-        week_num += 1
+    # Calculate week ranges for the selected month (Mon-Sun aligned)
+    weeks = build_month_weeks(year, month)
 
     # Build weekly data for selected month (year + month view)
     # Show ALL stores with 0 values if no data
@@ -2745,7 +2931,63 @@ def erp_tracking():
             'totals': total_categories
         })
 
+    # ========================================
+    # Calendar view (일별 달력) - Mon-Sun columns per week
+    # ========================================
+    daily_data = []
+    daily_days = []
+    daily_weeks_list = []
+    daily_week_num = 1
+
+    if search_type == 'calendar':
+        daily_weeks_list = build_month_weeks(year, month)
+
+        daily_week_num = request.args.get('week', type=int) or 1
+        if daily_week_num > len(daily_weeks_list):
+            daily_week_num = len(daily_weeks_list)
+        selected_week = daily_weeks_list[daily_week_num - 1]
+
+        weekday_names = ['월', '화', '수', '목', '금', '토', '일']
+        current_d = selected_week['start']
+        while current_d <= selected_week['end']:
+            daily_days.append({
+                'date': current_d,
+                'weekday': weekday_names[current_d.weekday()],
+                'label': current_d.strftime('%m/%d')
+            })
+            current_d += timedelta(days=1)
+
+        for store in stores:
+            store_days = []
+            total_categories = {cat: 0 for cat in category_names}
+
+            for day_info in daily_days:
+                d = day_info['date']
+                registrations = ERPRegistration.query.filter(
+                    ERPRegistration.store_id == store.id,
+                    ERPRegistration.is_return == False,
+                    ERPRegistration.registration_date == d
+                ).all()
+
+                day_totals = get_category_totals(registrations)
+                store_days.append(day_totals)
+
+                for cat in category_names:
+                    total_categories[cat] += day_totals[cat]
+
+            daily_data.append({
+                'store': store,
+                'branch': store.branch,
+                'jungsung': store.jungsung,
+                'franchise': store.franchise,
+                'days': store_days,
+                'totals': total_categories
+            })
+
     return render_template('admin/erp_tracking.html',
+                           search_type=search_type,
+                           selected_category=selected_category,
+                           all_categories=all_categories,
                            year=year,
                            month=month,
                            weeks=weeks,
@@ -2755,7 +2997,11 @@ def erp_tracking():
                            daterange_weeks=daterange_weeks,
                            daterange_data=daterange_data,
                            date_from=date_from,
-                           date_to=date_to)
+                           date_to=date_to,
+                           daily_data=daily_data,
+                           daily_days=daily_days,
+                           daily_weeks=daily_weeks_list,
+                           daily_week_num=daily_week_num)
 
 
 @admin_bp.route('/daily-shipments')
@@ -2883,13 +3129,18 @@ def erp_tracking_admin():
     """ERP Registration Quantity Check for Admin/Branch users
     Three search types: Weekly, Monthly, and Period Search"""
     from calendar import monthrange
+    import json
 
-    # Get search type (주별/월별/기간)
+    # Get search type (일별/주별/월별/기간)
     search_type = request.args.get('search_type', 'weekly')
 
     # Get filter parameters
     year = request.args.get('year', type=int) or date.today().year
     month = request.args.get('month', type=int) or date.today().month
+
+    # Category filter
+    selected_category = request.args.get('category', '전체')
+    all_categories = Category.query.filter_by(is_active=True).order_by(Category.id).all()
 
     # Period search parameters
     date_from = request.args.get('date_from')
@@ -2906,11 +3157,17 @@ def erp_tracking_admin():
     date_from_parsed = datetime.strptime(date_from, '%Y-%m-%d').date()
     date_to_parsed = datetime.strptime(date_to, '%Y-%m-%d').date()
 
-    # Get active categories (excluding 폐유)
-    regular_products = Product.query.filter(
-        Product.is_active == True,
-        Product.category != '폐유'
-    ).all()
+    # Get products filtered by category
+    if selected_category == '전체':
+        regular_products = Product.query.filter(
+            Product.is_active == True,
+            Product.category != '폐유'
+        ).all()
+    else:
+        regular_products = Product.query.filter(
+            Product.is_active == True,
+            Product.category == selected_category
+        ).all()
     regular_product_ids = [p.id for p in regular_products]
 
     # Get branches and jungsungs based on user role
@@ -2927,303 +3184,288 @@ def erp_tracking_admin():
             Store.branch_id == current_user.branch_id,
             Store.is_active == True
         ).distinct().all()
-        franchise_ids = [f[0] for f in franchise_ids]
-        franchises = Franchise.query.filter(
-            Franchise.is_active == True,
-            Franchise.id.in_(franchise_ids)
-        ).order_by(Franchise.name).all()
+        franchise_ids = [f[0] for f in franchise_ids if f[0] is not None]
+        if franchise_ids:
+            franchises = Franchise.query.filter(
+                Franchise.is_active == True,
+                Franchise.id.in_(franchise_ids)
+            ).order_by(Franchise.name).all()
+        else:
+            franchises = Franchise.query.filter_by(is_active=True).order_by(Franchise.name).all()
 
-    # ========================================
-    # 1. 주별 검색 (Weekly Search) - Select year/month, see weekly breakdown
-    # ========================================
-    weekly_data = []
-    weeks = []
-    if search_type == 'weekly':
-        # Calculate weeks in the selected month
-        _, last_day = monthrange(year, month)
-        week_num = 1
-        day = 1
-        while day <= last_day:
-            week_start = date(year, month, day)
-            week_end_day = min(day + 6, last_day)
-            week_end = date(year, month, week_end_day)
-            weeks.append({
-                'num': week_num,
-                'start': week_start,
-                'end': week_end
-            })
-            day = week_end_day + 1
-            week_num += 1
-
-        # Get all stores with their jungsung assignments
-        stores_query = Store.query.filter_by(is_active=True)
-        if not current_user.is_admin():
-            stores_query = stores_query.filter_by(branch_id=current_user.branch_id)
-        stores = stores_query.order_by(Store.branch_id, Store.franchise_id, Store.name).all()
-
-        # Build weekly data for each store
-        for store in stores:
-            store_data = {
-                'store': store,
-                'branch': store.branch,
-                'jungsung': store.jungsung,
-                'franchise': store.franchise,
-                'weeks': [],
-                'totals': {'shipment': 0, 'erp': 0, 'unregistered': 0}
-            }
-
-            # For each week, calculate shipment, ERP, and unregistered
-            for week in weeks:
-                # Shipment quantity for this store in this week
-                shipment_qty = db.session.query(func.sum(ShipmentItem.quantity)).filter(
-                    ShipmentItem.is_active == True,
-                    ShipmentItem.store_id == store.id,
-                    ShipmentItem.product_id.in_(regular_product_ids),
-                    ShipmentItem.shipment_date >= week['start'],
-                    ShipmentItem.shipment_date <= week['end']
-                ).scalar() or 0
-
-                # ERP registration quantity for this store in this week
-                erp_regs = ERPRegistration.query.filter(
-                    ERPRegistration.store_id == store.id,
-                    ERPRegistration.is_return == False,
-                    ERPRegistration.registration_date >= week['start'],
-                    ERPRegistration.registration_date <= week['end']
-                ).all()
-
-                erp_qty = 0
-                for reg in erp_regs:
-                    qty_dict = reg.get_category_quantities()
-                    erp_qty += sum(qty_dict.values()) if qty_dict else 0
-
-                unregistered = shipment_qty - erp_qty if shipment_qty > erp_qty else 0
-
-                store_data['weeks'].append({
-                    'shipment': shipment_qty,
-                    'erp': erp_qty,
-                    'unregistered': unregistered
-                })
-
-                store_data['totals']['shipment'] += shipment_qty
-                store_data['totals']['erp'] += erp_qty
-                store_data['totals']['unregistered'] += unregistered
-
-            # Only include stores with data
-            if store_data['totals']['shipment'] > 0 or store_data['totals']['erp'] > 0:
-                weekly_data.append(store_data)
-
-    # ========================================
-    # 2. 월별 검색 (Monthly Search) - Select year, see all 12 months
-    # ========================================
-    monthly_data = []
-    months_list = []
-    if search_type == 'monthly':
-        months_list = [{'num': m, 'name': f'{m}월'} for m in range(1, 13)]
-
-        # Get all stores
-        stores_query = Store.query.filter_by(is_active=True)
-        if not current_user.is_admin():
-            stores_query = stores_query.filter_by(branch_id=current_user.branch_id)
-        stores = stores_query.order_by(Store.branch_id, Store.franchise_id, Store.name).all()
-
-        # Build monthly data for each store
-        for store in stores:
-            store_data = {
-                'store': store,
-                'branch': store.branch,
-                'jungsung': store.jungsung,
-                'franchise': store.franchise,
-                'months': [],
-                'totals': {'shipment': 0, 'erp': 0, 'unregistered': 0}
-            }
-
-            # For each month, calculate shipment, ERP, and unregistered
+    # --- Helper: build periods list for any search type ---
+    def build_periods(search_type, year, month, date_from_parsed, date_to_parsed, view_type):
+        """Build list of period dicts with start/end dates."""
+        periods = []
+        if search_type == 'weekly':
+            periods = build_month_weeks(year, month)
+        elif search_type == 'monthly':
             for m in range(1, 13):
                 first_day = date(year, m, 1)
                 last_day = date(year, m, monthrange(year, m)[1])
+                periods.append({'num': m, 'name': f'{m}월', 'start': first_day, 'end': last_day})
+        elif search_type == 'period':
+            if view_type == 'daily':
+                current = date_from_parsed
+                num = 1
+                while current <= date_to_parsed:
+                    periods.append({'num': num, 'start': current, 'end': current, 'label': current.strftime('%m/%d')})
+                    current += timedelta(days=1)
+                    num += 1
+            elif view_type == 'weekly':
+                current = date_from_parsed
+                num = 1
+                while current <= date_to_parsed:
+                    week_end = min(current + timedelta(days=6), date_to_parsed)
+                    periods.append({'num': num, 'start': current, 'end': week_end, 'label': f'{current.strftime("%m/%d")}~{week_end.strftime("%m/%d")}'})
+                    current = week_end + timedelta(days=1)
+                    num += 1
+            elif view_type == 'monthly':
+                cy, cm = date_from_parsed.year, date_from_parsed.month
+                num = 1
+                while True:
+                    fd = date(cy, cm, 1)
+                    ld = date(cy, cm, monthrange(cy, cm)[1])
+                    ps = max(fd, date_from_parsed)
+                    pe = min(ld, date_to_parsed)
+                    if ps > date_to_parsed:
+                        break
+                    periods.append({'num': num, 'start': ps, 'end': pe, 'label': f'{cy}년 {cm}월'})
+                    cm += 1
+                    if cm > 12:
+                        cm = 1
+                        cy += 1
+                    num += 1
+                    if pe >= date_to_parsed:
+                        break
+            elif view_type == 'yearly':
+                num = 1
+                for y in range(date_from_parsed.year, date_to_parsed.year + 1):
+                    ps = max(date(y, 1, 1), date_from_parsed)
+                    pe = min(date(y, 12, 31), date_to_parsed)
+                    periods.append({'num': num, 'start': ps, 'end': pe, 'label': f'{y}년'})
+                    num += 1
+        return periods
 
-                # Shipment quantity for this store in this month
-                shipment_qty = db.session.query(func.sum(ShipmentItem.quantity)).filter(
-                    ShipmentItem.is_active == True,
-                    ShipmentItem.store_id == store.id,
-                    ShipmentItem.product_id.in_(regular_product_ids),
-                    ShipmentItem.shipment_date >= first_day,
-                    ShipmentItem.shipment_date <= last_day
-                ).scalar() or 0
+    # Helper: sum ERP quantities based on selected category
+    def erp_category_sum(qty_dict):
+        if not qty_dict:
+            return 0
+        if selected_category == '전체':
+            return sum(v for k, v in qty_dict.items() if k != '폐유')
+        return qty_dict.get(selected_category, 0)
 
-                # ERP registration quantity for this store in this month
-                erp_regs = ERPRegistration.query.filter(
-                    ERPRegistration.store_id == store.id,
-                    ERPRegistration.is_return == False,
-                    ERPRegistration.registration_date >= first_day,
-                    ERPRegistration.registration_date <= last_day
-                ).all()
+    # --- Helper: batch query shipments and ERP, then build store data ---
+    def batch_build_store_data(stores, periods, regular_product_ids, overall_start, overall_end):
+        """Batch query all shipments and ERP registrations, then assemble per-store per-period data."""
+        if not stores or not periods:
+            return []
 
+        store_ids = [s.id for s in stores]
+
+        # Batch query: shipment quantities grouped by store_id and date
+        shipment_rows = db.session.query(
+            ShipmentItem.store_id,
+            ShipmentItem.shipment_date,
+            func.sum(ShipmentItem.quantity)
+        ).filter(
+            ShipmentItem.is_active == True,
+            ShipmentItem.store_id.in_(store_ids),
+            ShipmentItem.product_id.in_(regular_product_ids) if regular_product_ids else False,
+            ShipmentItem.shipment_date >= overall_start,
+            ShipmentItem.shipment_date <= overall_end
+        ).group_by(ShipmentItem.store_id, ShipmentItem.shipment_date).all()
+
+        # Build shipment lookup: {store_id: {date: qty}}
+        shipment_lookup = {}
+        for store_id, ship_date, qty in shipment_rows:
+            if store_id not in shipment_lookup:
+                shipment_lookup[store_id] = {}
+            shipment_lookup[store_id][ship_date] = qty or 0
+
+        # Also query jungsung-level shipments (no store_id) and distribute to stores
+        jungsung_ids = list(set(s.jungsung_id for s in stores if s.jungsung_id))
+        if jungsung_ids:
+            jungsung_rows = db.session.query(
+                ShipmentItem.jungsung_id,
+                Product.franchise_id,
+                ShipmentItem.shipment_date,
+                func.sum(ShipmentItem.quantity)
+            ).join(Product).filter(
+                ShipmentItem.is_active == True,
+                ShipmentItem.jungsung_id.in_(jungsung_ids),
+                ShipmentItem.store_id == None,
+                ShipmentItem.product_id.in_(regular_product_ids) if regular_product_ids else False,
+                ShipmentItem.shipment_date >= overall_start,
+                ShipmentItem.shipment_date <= overall_end
+            ).group_by(ShipmentItem.jungsung_id, Product.franchise_id, ShipmentItem.shipment_date).all()
+
+            # Build jungsung+franchise → [store_ids] map
+            jf_store_map = {}
+            for s in stores:
+                if s.jungsung_id and s.franchise_id:
+                    key = (s.jungsung_id, s.franchise_id)
+                    jf_store_map.setdefault(key, []).append(s.id)
+
+            for j_id, f_id, ship_date, qty in jungsung_rows:
+                matching = jf_store_map.get((j_id, f_id), [])
+                if matching:
+                    per_store = qty // len(matching)
+                    remainder = qty % len(matching)
+                    for idx, sid in enumerate(matching):
+                        sq = per_store + (1 if idx < remainder else 0)
+                        if sq > 0:
+                            if sid not in shipment_lookup:
+                                shipment_lookup[sid] = {}
+                            shipment_lookup[sid][ship_date] = shipment_lookup[sid].get(ship_date, 0) + sq
+
+        # Batch query: all ERP registrations in the date range
+        erp_rows = ERPRegistration.query.filter(
+            ERPRegistration.store_id.in_(store_ids),
+            ERPRegistration.is_return == False,
+            ERPRegistration.registration_date >= overall_start,
+            ERPRegistration.registration_date <= overall_end
+        ).all()
+
+        # Build ERP lookup: {store_id: {date: total_qty}}
+        erp_lookup = {}
+        for reg in erp_rows:
+            sid = reg.store_id
+            rd = reg.registration_date
+            if sid not in erp_lookup:
+                erp_lookup[sid] = {}
+            qty_dict = reg.get_category_quantities()
+            total = erp_category_sum(qty_dict)
+            erp_lookup[sid][rd] = erp_lookup[sid].get(rd, 0) + total
+
+        # Build store data with period breakdowns
+        result = []
+        for store in stores:
+            sid = store.id
+            store_shipments = shipment_lookup.get(sid, {})
+            store_erps = erp_lookup.get(sid, {})
+
+            period_results = []
+            totals = {'shipment': 0, 'erp': 0, 'unregistered': 0}
+
+            for period in periods:
+                p_start = period['start']
+                p_end = period['end']
+
+                # Sum shipments for this period
+                ship_qty = 0
+                for d, q in store_shipments.items():
+                    if p_start <= d <= p_end:
+                        ship_qty += q
+
+                # Sum ERP for this period
                 erp_qty = 0
-                for reg in erp_regs:
-                    qty_dict = reg.get_category_quantities()
-                    erp_qty += sum(qty_dict.values()) if qty_dict else 0
+                for d, q in store_erps.items():
+                    if p_start <= d <= p_end:
+                        erp_qty += q
 
-                unregistered = shipment_qty - erp_qty if shipment_qty > erp_qty else 0
+                unreg = ship_qty - erp_qty if ship_qty > erp_qty else 0
 
-                store_data['months'].append({
-                    'shipment': shipment_qty,
+                period_results.append({
+                    'shipment': ship_qty,
                     'erp': erp_qty,
-                    'unregistered': unregistered
+                    'unregistered': unreg
                 })
 
-                store_data['totals']['shipment'] += shipment_qty
-                store_data['totals']['erp'] += erp_qty
-                store_data['totals']['unregistered'] += unregistered
+                totals['shipment'] += ship_qty
+                totals['erp'] += erp_qty
+                totals['unregistered'] += unreg
 
-            # Only include stores with data
-            if store_data['totals']['shipment'] > 0 or store_data['totals']['erp'] > 0:
-                monthly_data.append(store_data)
+            if totals['shipment'] > 0 or totals['erp'] > 0:
+                result.append({
+                    'store': store,
+                    'branch': store.branch,
+                    'jungsung': store.jungsung,
+                    'franchise': store.franchise,
+                    'period_data': period_results,
+                    'totals': totals
+                })
 
-    # ========================================
-    # 3. 기간 검색 (Period Search) - Select date range + view type
-    # ========================================
+        return result
+
+    # Get all stores once with eager loading
+    stores_query = Store.query.filter_by(is_active=True).options(
+        joinedload(Store.branch),
+        joinedload(Store.jungsung),
+        joinedload(Store.franchise)
+    )
+    if not current_user.is_admin():
+        stores_query = stores_query.filter_by(branch_id=current_user.branch_id)
+    stores = stores_query.order_by(Store.branch_id, Store.franchise_id, Store.name).all()
+
+    # Build periods and data based on search type
+    weekly_data = []
+    weeks = []
+    monthly_data = []
+    months_list = []
     period_data = []
     periods = []
-    if search_type == 'period':
-        if view_type == 'daily':
-            # Generate daily periods
-            current = date_from_parsed
-            period_num = 1
-            while current <= date_to_parsed:
-                periods.append({
-                    'num': period_num,
-                    'start': current,
-                    'end': current,
-                    'label': current.strftime('%m/%d')
-                })
-                current += timedelta(days=1)
-                period_num += 1
+    daily_data = []
+    daily_days = []
+    daily_weeks = []
+    daily_week_num = 1
 
-        elif view_type == 'weekly':
-            # Generate weekly periods
-            current = date_from_parsed
-            period_num = 1
-            while current <= date_to_parsed:
-                week_end = min(current + timedelta(days=6), date_to_parsed)
-                periods.append({
-                    'num': period_num,
-                    'start': current,
-                    'end': week_end,
-                    'label': f'{current.strftime("%m/%d")}~{week_end.strftime("%m/%d")}'
-                })
-                current = week_end + timedelta(days=1)
-                period_num += 1
+    if search_type == 'calendar':
+        # Daily calendar: year/month/week selector, Mon-Sun columns
+        daily_weeks = build_month_weeks(year, month)
 
-        elif view_type == 'monthly':
-            # Generate monthly periods
-            current_year = date_from_parsed.year
-            current_month = date_from_parsed.month
-            period_num = 1
+        daily_week_num = request.args.get('week', type=int) or 1
+        if daily_week_num > len(daily_weeks):
+            daily_week_num = len(daily_weeks)
+        selected_week = daily_weeks[daily_week_num - 1]
 
-            while True:
-                first_day = date(current_year, current_month, 1)
-                last_day = date(current_year, current_month, monthrange(current_year, current_month)[1])
+        weekday_names = ['월', '화', '수', '목', '금', '토', '일']
+        current_d = selected_week['start']
+        while current_d <= selected_week['end']:
+            daily_days.append({
+                'date': current_d,
+                'weekday': weekday_names[current_d.weekday()],
+                'label': current_d.strftime('%m/%d')
+            })
+            current_d += timedelta(days=1)
 
-                period_start = max(first_day, date_from_parsed)
-                period_end = min(last_day, date_to_parsed)
+        day_periods = [{'start': d['date'], 'end': d['date']} for d in daily_days]
+        raw_data = batch_build_store_data(stores, day_periods, regular_product_ids,
+                                          selected_week['start'], selected_week['end'])
+        for item in raw_data:
+            item['days'] = item.pop('period_data')
+        daily_data = raw_data
 
-                if period_start > date_to_parsed:
-                    break
+    elif search_type == 'weekly':
+        weeks = build_periods('weekly', year, month, None, None, None)
+        if weeks:
+            overall_start = weeks[0]['start']
+            overall_end = weeks[-1]['end']
+            raw_data = batch_build_store_data(stores, weeks, regular_product_ids, overall_start, overall_end)
+            for item in raw_data:
+                item['weeks'] = item.pop('period_data')
+            weekly_data = raw_data
 
-                periods.append({
-                    'num': period_num,
-                    'start': period_start,
-                    'end': period_end,
-                    'label': f'{current_year}년 {current_month}월'
-                })
+    elif search_type == 'monthly':
+        months_list = [{'num': m, 'name': f'{m}월'} for m in range(1, 13)]
+        month_periods = build_periods('monthly', year, month, None, None, None)
+        if month_periods:
+            overall_start = month_periods[0]['start']
+            overall_end = month_periods[-1]['end']
+            raw_data = batch_build_store_data(stores, month_periods, regular_product_ids, overall_start, overall_end)
+            for item in raw_data:
+                item['months'] = item.pop('period_data')
+            monthly_data = raw_data
 
-                current_month += 1
-                if current_month > 12:
-                    current_month = 1
-                    current_year += 1
-                period_num += 1
-
-                if period_end >= date_to_parsed:
-                    break
-
-        elif view_type == 'yearly':
-            # Generate yearly periods
-            start_year = date_from_parsed.year
-            end_year = date_to_parsed.year
-            period_num = 1
-
-            for y in range(start_year, end_year + 1):
-                year_start = date(y, 1, 1)
-                year_end = date(y, 12, 31)
-
-                period_start = max(year_start, date_from_parsed)
-                period_end = min(year_end, date_to_parsed)
-
-                periods.append({
-                    'num': period_num,
-                    'start': period_start,
-                    'end': period_end,
-                    'label': f'{y}년'
-                })
-                period_num += 1
-
-        # Get all stores
-        stores_query = Store.query.filter_by(is_active=True)
-        if not current_user.is_admin():
-            stores_query = stores_query.filter_by(branch_id=current_user.branch_id)
-        stores = stores_query.order_by(Store.branch_id, Store.franchise_id, Store.name).all()
-
-        # Build period data for each store
-        for store in stores:
-            store_data = {
-                'store': store,
-                'branch': store.branch,
-                'jungsung': store.jungsung,
-                'franchise': store.franchise,
-                'periods': [],
-                'totals': {'shipment': 0, 'erp': 0, 'unregistered': 0}
-            }
-
-            # For each period, calculate shipment, ERP, and unregistered
-            for period in periods:
-                # Shipment quantity for this store in this period
-                shipment_qty = db.session.query(func.sum(ShipmentItem.quantity)).filter(
-                    ShipmentItem.is_active == True,
-                    ShipmentItem.store_id == store.id,
-                    ShipmentItem.product_id.in_(regular_product_ids),
-                    ShipmentItem.shipment_date >= period['start'],
-                    ShipmentItem.shipment_date <= period['end']
-                ).scalar() or 0
-
-                # ERP registration quantity for this store in this period
-                erp_regs = ERPRegistration.query.filter(
-                    ERPRegistration.store_id == store.id,
-                    ERPRegistration.is_return == False,
-                    ERPRegistration.registration_date >= period['start'],
-                    ERPRegistration.registration_date <= period['end']
-                ).all()
-
-                erp_qty = 0
-                for reg in erp_regs:
-                    qty_dict = reg.get_category_quantities()
-                    erp_qty += sum(qty_dict.values()) if qty_dict else 0
-
-                unregistered = shipment_qty - erp_qty if shipment_qty > erp_qty else 0
-
-                store_data['periods'].append({
-                    'shipment': shipment_qty,
-                    'erp': erp_qty,
-                    'unregistered': unregistered
-                })
-
-                store_data['totals']['shipment'] += shipment_qty
-                store_data['totals']['erp'] += erp_qty
-                store_data['totals']['unregistered'] += unregistered
-
-            # Only include stores with data
-            if store_data['totals']['shipment'] > 0 or store_data['totals']['erp'] > 0:
-                period_data.append(store_data)
+    elif search_type == 'period':
+        periods = build_periods('period', year, month, date_from_parsed, date_to_parsed, view_type)
+        if periods:
+            overall_start = periods[0]['start']
+            overall_end = periods[-1]['end']
+            raw_data = batch_build_store_data(stores, periods, regular_product_ids, overall_start, overall_end)
+            for item in raw_data:
+                item['periods'] = item.pop('period_data')
+            period_data = raw_data
 
     return render_template('admin/erp_tracking_admin.html',
                            search_type=search_type,
@@ -3232,12 +3474,18 @@ def erp_tracking_admin():
                            date_from=date_from,
                            date_to=date_to,
                            view_type=view_type,
+                           selected_category=selected_category,
+                           all_categories=all_categories,
                            weekly_data=weekly_data,
                            weeks=weeks,
                            monthly_data=monthly_data,
                            months_list=months_list,
                            period_data=period_data,
                            periods=periods,
+                           daily_data=daily_data,
+                           daily_days=daily_days,
+                           daily_weeks=daily_weeks,
+                           daily_week_num=daily_week_num,
                            branches=branches,
                            jungsungs=jungsungs,
                            franchises=franchises)
@@ -3302,65 +3550,6 @@ def erp_registration():
                            franchise_groups=franchise_groups,
                            reg_by_store=reg_by_store,
                            categories=categories)
-
-
-@admin_bp.route('/erp-registration/save', methods=['POST'])
-@login_required
-@jungsung_required
-def erp_registration_save():
-    """Save ERP registration data"""
-    jungsung = current_user.jungsung
-    if not jungsung:
-        return jsonify({'success': False, 'message': '연결된 중상 정보가 없습니다.'})
-
-    data = request.get_json()
-    if not data:
-        return jsonify({'success': False, 'message': '데이터가 없습니다.'})
-
-    registration_date_str = data.get('date')
-    store_id = data.get('store_id')
-    stockin_qty = data.get('stockin_qty', 0) or 0
-    waste_qty = data.get('waste_qty', 0) or 0
-    is_return = data.get('is_return', False)
-
-    try:
-        registration_date = datetime.strptime(registration_date_str, '%Y-%m-%d').date()
-    except (ValueError, TypeError):
-        return jsonify({'success': False, 'message': '잘못된 날짜 형식입니다.'})
-
-    # Verify store belongs to this jungsung
-    store = Store.query.filter_by(id=store_id, jungsung_id=jungsung.id).first()
-    if not store:
-        return jsonify({'success': False, 'message': '해당 매장에 대한 권한이 없습니다.'})
-
-    # Check for existing registration
-    existing = ERPRegistration.query.filter_by(
-        registration_date=registration_date,
-        store_id=store_id,
-        jungsung_id=jungsung.id,
-        is_return=is_return
-    ).first()
-
-    if existing:
-        # Update existing
-        existing.stockin_qty = stockin_qty
-        existing.waste_qty = waste_qty
-        existing.updated_at = datetime.utcnow()
-    else:
-        # Create new
-        new_reg = ERPRegistration(
-            registration_date=registration_date,
-            store_id=store_id,
-            jungsung_id=jungsung.id,
-            stockin_qty=stockin_qty,
-            waste_qty=waste_qty,
-            is_return=is_return,
-            created_by=current_user.id
-        )
-        db.session.add(new_reg)
-
-    db.session.commit()
-    return jsonify({'success': True, 'message': '저장되었습니다.'})
 
 
 @admin_bp.route('/erp-registration/complete', methods=['POST'])
@@ -3475,16 +3664,9 @@ def erp_registration_return():
 @login_required
 @jungsung_required
 def erp_tracking_jungsung():
-    """ERP Registration Tracking for Jungsung users - Shows shipments vs ERP registrations"""
-    # Get date filter
-    selected_date = request.args.get('date')
-    if selected_date:
-        try:
-            filter_date = datetime.strptime(selected_date, '%Y-%m-%d').date()
-        except ValueError:
-            filter_date = date.today()
-    else:
-        filter_date = date.today()
+    """ERP Registration Tracking for Jungsung users - Shows shipments vs ERP registrations
+    Supports: daily (날짜별), weekly (주별), monthly (월별), period (기간) search"""
+    from calendar import monthrange
 
     # Get jungsung associated with this user
     jungsung = current_user.jungsung
@@ -3492,102 +3674,363 @@ def erp_tracking_jungsung():
         flash('연결된 중상 정보가 없습니다. 관리자에게 문의하세요.', 'danger')
         return redirect(url_for('dashboard.jungsung'))
 
-    # Get stores assigned to this jungsung, grouped by franchise
+    search_type = request.args.get('search_type', 'daily')
+
+    # Category filter
+    selected_category = request.args.get('category', '전체')
+    all_categories = Category.query.filter_by(is_active=True).order_by(Category.id).all()
+
+    # Common: get stores and products
     stores = Store.query.filter_by(
         jungsung_id=jungsung.id,
         is_active=True
     ).order_by(Store.franchise_id, Store.name).all()
 
-    # Get product categories for shipment calculation
-    regular_products = Product.query.filter(
-        Product.is_active == True,
-        Product.category != '폐유'
-    ).all()
+    if selected_category == '전체':
+        regular_products = Product.query.filter(
+            Product.is_active == True,
+            Product.category != '폐유'
+        ).all()
+    else:
+        regular_products = Product.query.filter(
+            Product.is_active == True,
+            Product.category == selected_category
+        ).all()
     regular_product_ids = [p.id for p in regular_products]
+    store_ids = [s.id for s in stores]
 
-    # Get total shipment for this jungsung on this date (from 출고)
-    # This includes ALL shipments with this jungsung_id regardless of store
-    total_shipment = db.session.query(func.sum(ShipmentItem.quantity)).filter(
-        ShipmentItem.is_active == True,
-        ShipmentItem.jungsung_id == jungsung.id,
-        ShipmentItem.product_id.in_(regular_product_ids) if regular_product_ids else True,
-        ShipmentItem.shipment_date == filter_date
-    ).scalar() or 0
+    # Build franchise_id → [store_id] map for distributing jungsung-level shipments
+    franchise_store_map = {}
+    for s in stores:
+        if s.franchise_id:
+            franchise_store_map.setdefault(s.franchise_id, []).append(s.id)
 
-    # Build tracking data grouped by franchise
-    total_shipment_stores = 0  # Sum from per-store shipments
+    # Batch helper: fetch all shipment data grouped by store+date in one query
+    def batch_shipments(start_date, end_date):
+        # 1. Shipments with store_id (direct to store)
+        store_rows = db.session.query(
+            ShipmentItem.store_id,
+            ShipmentItem.shipment_date,
+            func.sum(ShipmentItem.quantity)
+        ).filter(
+            ShipmentItem.is_active == True,
+            ShipmentItem.store_id.in_(store_ids),
+            ShipmentItem.product_id.in_(regular_product_ids) if regular_product_ids else False,
+            ShipmentItem.shipment_date >= start_date,
+            ShipmentItem.shipment_date <= end_date
+        ).group_by(ShipmentItem.store_id, ShipmentItem.shipment_date).all()
+
+        # 2. Shipments to jungsung (no store_id) - 지사 출고 to 중상
+        jungsung_rows = db.session.query(
+            Product.franchise_id,
+            ShipmentItem.shipment_date,
+            func.sum(ShipmentItem.quantity)
+        ).join(Product).filter(
+            ShipmentItem.is_active == True,
+            ShipmentItem.jungsung_id == jungsung.id,
+            ShipmentItem.store_id == None,
+            ShipmentItem.product_id.in_(regular_product_ids) if regular_product_ids else False,
+            ShipmentItem.shipment_date >= start_date,
+            ShipmentItem.shipment_date <= end_date
+        ).group_by(Product.franchise_id, ShipmentItem.shipment_date).all()
+
+        # Map jungsung-level shipments to stores via franchise
+        result = list(store_rows)
+        for franchise_id, s_date, qty in jungsung_rows:
+            matching = franchise_store_map.get(franchise_id, [])
+            if matching:
+                per_store = qty // len(matching)
+                remainder = qty % len(matching)
+                for j, sid in enumerate(matching):
+                    sq = per_store + (1 if j < remainder else 0)
+                    if sq > 0:
+                        result.append((sid, s_date, sq))
+        return result
+
+    # Batch helper: fetch all ERP data in one query
+    def batch_erp(start_date, end_date):
+        return ERPRegistration.query.filter(
+            ERPRegistration.store_id.in_(store_ids),
+            ERPRegistration.is_return == False,
+            ERPRegistration.registration_date >= start_date,
+            ERPRegistration.registration_date <= end_date
+        ).all()
+
+    # Helper: sum ERP quantities based on selected category
+    def erp_category_sum(qty_dict):
+        if not qty_dict:
+            return 0
+        if selected_category == '전체':
+            return sum(v for k, v in qty_dict.items() if k != '폐유')
+        return qty_dict.get(selected_category, 0)
+
+    # Helper: build lookup dicts from batch data for time periods
+    def build_period_lookups(time_periods, shipment_rows, erp_rows):
+        # shipment_lookup[(store_id, period_idx)] = qty
+        shipment_lookup = {}
+        for store_id, s_date, qty in shipment_rows:
+            for i, p in enumerate(time_periods):
+                if p['start'] <= s_date <= p['end']:
+                    key = (store_id, i)
+                    shipment_lookup[key] = shipment_lookup.get(key, 0) + qty
+                    break
+
+        # erp_lookup[(store_id, period_idx)] = qty
+        erp_lookup = {}
+        for reg in erp_rows:
+            for i, p in enumerate(time_periods):
+                if p['start'] <= reg.registration_date <= p['end']:
+                    qty_dict = reg.get_category_quantities()
+                    erp_qty = erp_category_sum(qty_dict)
+                    if erp_qty:
+                        key = (reg.store_id, i)
+                        erp_lookup[key] = erp_lookup.get(key, 0) + erp_qty
+                    break
+
+        return shipment_lookup, erp_lookup
+
+    # Helper: build store data from lookups
+    def build_store_data(time_periods, shipment_lookup, erp_lookup, period_key):
+        result = []
+        for store in stores:
+            store_data = {
+                'store': store, 'franchise': store.franchise,
+                period_key: [], 'totals': {'shipment': 0, 'erp': 0, 'unregistered': 0}
+            }
+            for i in range(len(time_periods)):
+                s_qty = shipment_lookup.get((store.id, i), 0)
+                e_qty = erp_lookup.get((store.id, i), 0)
+                unreg = s_qty - e_qty if s_qty > e_qty else 0
+                store_data[period_key].append({'shipment': s_qty, 'erp': e_qty, 'unregistered': unreg})
+                store_data['totals']['shipment'] += s_qty
+                store_data['totals']['erp'] += e_qty
+                store_data['totals']['unregistered'] += unreg
+            if store_data['totals']['shipment'] > 0 or store_data['totals']['erp'] > 0:
+                result.append(store_data)
+        return result
+
+    # Helper: group stores by franchise
+    def get_franchise_dict():
+        fd = {}
+        for store in stores:
+            if store.franchise_id not in fd:
+                fd[store.franchise_id] = {'franchise': store.franchise, 'stores': []}
+            fd[store.franchise_id]['stores'].append(store)
+        return fd
+
+    # ========================================
+    # 1. 날짜별 (Daily) - single date view (original)
+    # ========================================
+    filter_date = date.today()
+    franchise_groups = []
+    total_shipment = 0
     total_erp_registered = 0
     total_unregistered = 0
 
-    # Group stores by franchise
-    franchise_dict = {}
-    for store in stores:
-        if store.franchise_id not in franchise_dict:
-            franchise_dict[store.franchise_id] = {
-                'franchise': store.franchise,
-                'stores': []
-            }
-        franchise_dict[store.franchise_id]['stores'].append(store)
+    if search_type == 'daily':
+        selected_date = request.args.get('date')
+        if selected_date:
+            try:
+                filter_date = datetime.strptime(selected_date, '%Y-%m-%d').date()
+            except ValueError:
+                filter_date = date.today()
 
-    # Build franchise groups with store data (ERP registration per store)
-    franchise_groups = []
-    for franchise_id, group in franchise_dict.items():
-        group_data = {
-            'franchise': group['franchise'],
-            'stores': []
-        }
+        # Batch: 2 queries total instead of 2 per store
+        shipment_rows = batch_shipments(filter_date, filter_date)
+        erp_rows = batch_erp(filter_date, filter_date)
 
-        # Calculate per-store values
-        for store in group['stores']:
-            # 출고: Shipments to THIS STORE on this date (excluding 폐유)
-            store_shipment = db.session.query(func.sum(ShipmentItem.quantity)).join(
-                Product
-            ).filter(
-                ShipmentItem.is_active == True,
-                ShipmentItem.store_id == store.id,
-                ShipmentItem.shipment_date == filter_date,
-                Product.category != '폐유'
-            ).scalar() or 0
+        shipment_by_store = {}
+        for store_id, _, qty in shipment_rows:
+            shipment_by_store[store_id] = shipment_by_store.get(store_id, 0) + qty
+        erp_by_store = {}
+        for reg in erp_rows:
+            qty_dict = reg.get_category_quantities()
+            erp_qty = erp_category_sum(qty_dict)
+            if erp_qty:
+                erp_by_store[reg.store_id] = erp_by_store.get(reg.store_id, 0) + erp_qty
 
-            # ERP등록: Total for THIS STORE on this date (excluding 폐유)
-            store_erp = 0
-            erp_regs = ERPRegistration.query.filter(
-                ERPRegistration.registration_date == filter_date,
-                ERPRegistration.store_id == store.id,
-                ERPRegistration.is_return == False
-            ).all()
+        franchise_dict = get_franchise_dict()
+        for fid, group in franchise_dict.items():
+            group_data = {'franchise': group['franchise'], 'stores': []}
+            for store in group['stores']:
+                s_qty = shipment_by_store.get(store.id, 0)
+                e_qty = erp_by_store.get(store.id, 0)
+                unreg = s_qty - e_qty
+                group_data['stores'].append({
+                    'store': store, 'shipment': s_qty,
+                    'erp_registered': e_qty, 'unregistered': unreg
+                })
+                total_shipment += s_qty
+                total_erp_registered += e_qty
+                total_unregistered += unreg
+            franchise_groups.append(group_data)
 
-            for erp_reg in erp_regs:
-                qty_dict = erp_reg.get_category_quantities()
-                if qty_dict:
-                    for category, qty in qty_dict.items():
-                        if category != '폐유':
-                            store_erp += qty
+    # ========================================
+    # 1.5. 일별 달력 (Daily Calendar) - Mon-Sun columns per week
+    # ========================================
+    daily_data = []
+    daily_days = []
+    daily_weeks = []
+    daily_week_num = 1
 
-            # 미등록: 출고 - ERP등록 for THIS STORE (allow negative values)
-            store_unregistered = store_shipment - store_erp
+    if search_type == 'calendar':
+        year = request.args.get('year', type=int) or date.today().year
+        month = request.args.get('month', type=int) or date.today().month
 
-            group_data['stores'].append({
-                'store': store,
-                'shipment': store_shipment,
-                'erp_registered': store_erp,
-                'unregistered': store_unregistered
+        # Build weeks for the month (Mon-Sun aligned)
+        daily_weeks = build_month_weeks(year, month)
+
+        daily_week_num = request.args.get('week', type=int) or 1
+        if daily_week_num > len(daily_weeks):
+            daily_week_num = len(daily_weeks)
+        selected_week = daily_weeks[daily_week_num - 1]
+
+        # Build individual day periods
+        weekday_names = ['월', '화', '수', '목', '금', '토', '일']
+        current_d = selected_week['start']
+        while current_d <= selected_week['end']:
+            daily_days.append({
+                'date': current_d,
+                'weekday': weekday_names[current_d.weekday()],
+                'label': current_d.strftime('%m/%d')
+            })
+            current_d += timedelta(days=1)
+
+        day_periods = [{'start': d['date'], 'end': d['date']} for d in daily_days]
+        s_rows = batch_shipments(selected_week['start'], selected_week['end'])
+        e_rows = batch_erp(selected_week['start'], selected_week['end'])
+        s_lookup, e_lookup = build_period_lookups(day_periods, s_rows, e_rows)
+        daily_data = build_store_data(day_periods, s_lookup, e_lookup, 'days')
+
+    # ========================================
+    # 2. 주별 (Weekly) - year/month, weekly breakdown
+    # ========================================
+    year = request.args.get('year', type=int) or date.today().year
+    month = request.args.get('month', type=int) or date.today().month
+    weekly_data = []
+    weeks = []
+
+    if search_type == 'weekly':
+        weeks = build_month_weeks(year, month)
+
+        overall_start = date(year, month, 1)
+        _, last_day_num = monthrange(year, month)
+        overall_end = date(year, month, last_day_num)
+        s_rows = batch_shipments(overall_start, overall_end)
+        e_rows = batch_erp(overall_start, overall_end)
+        s_lookup, e_lookup = build_period_lookups(weeks, s_rows, e_rows)
+        weekly_data = build_store_data(weeks, s_lookup, e_lookup, 'weeks')
+
+    # ========================================
+    # 3. 월별 (Monthly) - year, 12 months breakdown
+    # ========================================
+    monthly_data = []
+    months_list = []
+
+    if search_type == 'monthly':
+        months_list = [{'num': m, 'name': f'{m}월'} for m in range(1, 13)]
+        month_periods = []
+        for m in range(1, 13):
+            month_periods.append({
+                'start': date(year, m, 1),
+                'end': date(year, m, monthrange(year, m)[1])
             })
 
-            # Accumulate totals
-            total_shipment_stores += store_shipment
-            total_erp_registered += store_erp
-            total_unregistered += store_unregistered
+        s_rows = batch_shipments(date(year, 1, 1), date(year, 12, 31))
+        e_rows = batch_erp(date(year, 1, 1), date(year, 12, 31))
+        s_lookup, e_lookup = build_period_lookups(month_periods, s_rows, e_rows)
+        monthly_data = build_store_data(month_periods, s_lookup, e_lookup, 'months')
 
-        franchise_groups.append(group_data)
+    # ========================================
+    # 4. 기간 (Period) - date range + view type
+    # ========================================
+    date_from = request.args.get('date_from')
+    date_to = request.args.get('date_to')
+    view_type = request.args.get('view_type', 'weekly')
+    period_data = []
+    periods = []
+
+    if search_type == 'period':
+        if not date_from or not date_to:
+            first_day = date(year, month, 1)
+            last_day = date(year, month, monthrange(year, month)[1])
+            date_from = first_day.strftime('%Y-%m-%d')
+            date_to = last_day.strftime('%Y-%m-%d')
+
+        date_from_parsed = datetime.strptime(date_from, '%Y-%m-%d').date()
+        date_to_parsed = datetime.strptime(date_to, '%Y-%m-%d').date()
+
+        # Generate periods based on view_type
+        if view_type == 'daily':
+            current = date_from_parsed
+            pn = 1
+            while current <= date_to_parsed:
+                periods.append({'num': pn, 'start': current, 'end': current, 'label': current.strftime('%m/%d')})
+                current += timedelta(days=1)
+                pn += 1
+        elif view_type == 'weekly':
+            current = date_from_parsed
+            pn = 1
+            while current <= date_to_parsed:
+                week_end = min(current + timedelta(days=6), date_to_parsed)
+                periods.append({'num': pn, 'start': current, 'end': week_end,
+                                'label': f'{current.strftime("%m/%d")}~{week_end.strftime("%m/%d")}'})
+                current = week_end + timedelta(days=1)
+                pn += 1
+        elif view_type == 'monthly':
+            cy, cm = date_from_parsed.year, date_from_parsed.month
+            pn = 1
+            while True:
+                fd = date(cy, cm, 1)
+                ld = date(cy, cm, monthrange(cy, cm)[1])
+                ps = max(fd, date_from_parsed)
+                pe = min(ld, date_to_parsed)
+                if ps > date_to_parsed:
+                    break
+                periods.append({'num': pn, 'start': ps, 'end': pe, 'label': f'{cy}년 {cm}월'})
+                cm += 1
+                if cm > 12:
+                    cm = 1
+                    cy += 1
+                pn += 1
+                if pe >= date_to_parsed:
+                    break
+        elif view_type == 'yearly':
+            for y in range(date_from_parsed.year, date_to_parsed.year + 1):
+                ps = max(date(y, 1, 1), date_from_parsed)
+                pe = min(date(y, 12, 31), date_to_parsed)
+                periods.append({'num': y - date_from_parsed.year + 1, 'start': ps, 'end': pe, 'label': f'{y}년'})
+
+        s_rows = batch_shipments(date_from_parsed, date_to_parsed)
+        e_rows = batch_erp(date_from_parsed, date_to_parsed)
+        s_lookup, e_lookup = build_period_lookups(periods, s_rows, e_rows)
+        period_data = build_store_data(periods, s_lookup, e_lookup, 'periods')
 
     return render_template('admin/erp_tracking_jungsung.html',
-                           filter_date=filter_date,
+                           search_type=search_type,
                            jungsung=jungsung,
+                           selected_category=selected_category,
+                           all_categories=all_categories,
+                           # daily
+                           filter_date=filter_date,
                            franchise_groups=franchise_groups,
-                           total_shipment=total_shipment_stores,
+                           total_shipment=total_shipment,
                            total_erp_registered=total_erp_registered,
-                           total_unregistered=total_unregistered)
+                           total_unregistered=total_unregistered,
+                           # calendar
+                           daily_data=daily_data,
+                           daily_days=daily_days,
+                           daily_weeks=daily_weeks,
+                           daily_week_num=daily_week_num,
+                           # weekly
+                           year=year, month=month,
+                           weekly_data=weekly_data, weeks=weeks,
+                           # monthly
+                           monthly_data=monthly_data, months_list=months_list,
+                           # period
+                           date_from=date_from, date_to=date_to,
+                           view_type=view_type,
+                           period_data=period_data, periods=periods)
 
 
 @admin_bp.route('/erp-tracking-franchise')
@@ -3600,6 +4043,10 @@ def erp_tracking_franchise():
 
     # Get search type (주별/월별/기간)
     search_type = request.args.get('search_type', 'weekly')
+
+    # Category filter
+    selected_category = request.args.get('category', '전체')
+    all_categories = Category.query.filter_by(is_active=True).order_by(Category.id).all()
 
     # Get filter parameters
     year = request.args.get('year', type=int) or date.today().year
@@ -3626,12 +4073,26 @@ def erp_tracking_franchise():
         flash('연결된 프랜차이즈 정보가 없습니다. 관리자에게 문의하세요.', 'danger')
         return redirect(url_for('dashboard.franchise'))
 
-    # Get active categories (excluding 폐유)
-    regular_products = Product.query.filter(
-        Product.is_active == True,
-        Product.category != '폐유'
-    ).all()
+    # Get active products filtered by category
+    if selected_category == '전체':
+        regular_products = Product.query.filter(
+            Product.is_active == True,
+            Product.category != '폐유'
+        ).all()
+    else:
+        regular_products = Product.query.filter(
+            Product.is_active == True,
+            Product.category == selected_category
+        ).all()
     regular_product_ids = [p.id for p in regular_products]
+
+    # Helper: sum ERP quantities based on selected category
+    def erp_category_sum(qty_dict):
+        if not qty_dict:
+            return 0
+        if selected_category == '전체':
+            return sum(v for k, v in qty_dict.items() if k != '폐유')
+        return qty_dict.get(selected_category, 0)
 
     # Get stores belonging to this franchise
     stores = Store.query.filter_by(
@@ -3639,27 +4100,119 @@ def erp_tracking_franchise():
         is_active=True
     ).order_by(Store.name).all()
 
+    # Pre-compute jungsung-level shipments for this franchise's stores
+    # These are ShipmentItems with jungsung_id but no store_id
+    store_ids_franchise = [s.id for s in stores]
+    jungsung_ids_franchise = list(set(s.jungsung_id for s in stores if s.jungsung_id))
+
+    # Build jungsung+franchise → [store_ids] map for distribution
+    jf_map_franchise = {}
+    for s in stores:
+        if s.jungsung_id:
+            jf_map_franchise.setdefault(s.jungsung_id, []).append(s.id)
+
+    def get_jungsung_shipment_extra(store, period_start, period_end):
+        """Get this store's share of jungsung-level shipments for the period."""
+        if not store.jungsung_id or not jungsung_ids_franchise:
+            return 0
+        siblings = jf_map_franchise.get(store.jungsung_id, [])
+        if not siblings:
+            return 0
+        total = db.session.query(func.sum(ShipmentItem.quantity)).join(Product).filter(
+            ShipmentItem.is_active == True,
+            ShipmentItem.jungsung_id == store.jungsung_id,
+            ShipmentItem.store_id == None,
+            Product.franchise_id == franchise.id,
+            ShipmentItem.product_id.in_(regular_product_ids) if regular_product_ids else False,
+            ShipmentItem.shipment_date >= period_start,
+            ShipmentItem.shipment_date <= period_end
+        ).scalar() or 0
+        if total == 0:
+            return 0
+        per_store = total // len(siblings)
+        idx = siblings.index(store.id) if store.id in siblings else -1
+        remainder = total % len(siblings)
+        return per_store + (1 if 0 <= idx < remainder else 0)
+
+    # ========================================
+    # 0. 일별 달력 (Daily Calendar) - Mon-Sun columns per week
+    # ========================================
+    daily_data = []
+    daily_days = []
+    daily_weeks = []
+    daily_week_num = 1
+
+    if search_type == 'calendar':
+        # Build weeks for the month (Mon-Sun aligned)
+        daily_weeks = build_month_weeks(year, month)
+
+        daily_week_num = request.args.get('week', type=int) or 1
+        if daily_week_num > len(daily_weeks):
+            daily_week_num = len(daily_weeks)
+        selected_week = daily_weeks[daily_week_num - 1]
+
+        weekday_names = ['월', '화', '수', '목', '금', '토', '일']
+        current_d = selected_week['start']
+        while current_d <= selected_week['end']:
+            daily_days.append({
+                'date': current_d,
+                'weekday': weekday_names[current_d.weekday()],
+                'label': current_d.strftime('%m/%d')
+            })
+            current_d += timedelta(days=1)
+
+        # Build daily data for each store
+        for store in stores:
+            store_data = {
+                'store': store,
+                'days': [],
+                'totals': {'shipment': 0, 'erp': 0, 'unregistered': 0}
+            }
+
+            for day_info in daily_days:
+                d = day_info['date']
+                shipment_qty = db.session.query(func.sum(ShipmentItem.quantity)).filter(
+                    ShipmentItem.is_active == True,
+                    ShipmentItem.store_id == store.id,
+                    ShipmentItem.product_id.in_(regular_product_ids) if regular_product_ids else False,
+                    ShipmentItem.shipment_date == d
+                ).scalar() or 0
+                shipment_qty += get_jungsung_shipment_extra(store, d, d)
+
+                erp_regs = ERPRegistration.query.filter(
+                    ERPRegistration.store_id == store.id,
+                    ERPRegistration.is_return == False,
+                    ERPRegistration.registration_date == d
+                ).all()
+
+                erp_qty = 0
+                for reg in erp_regs:
+                    qty_dict = reg.get_category_quantities()
+                    erp_qty += erp_category_sum(qty_dict)
+
+                unregistered = shipment_qty - erp_qty if shipment_qty > erp_qty else 0
+
+                store_data['days'].append({
+                    'shipment': shipment_qty,
+                    'erp': erp_qty,
+                    'unregistered': unregistered
+                })
+
+                store_data['totals']['shipment'] += shipment_qty
+                store_data['totals']['erp'] += erp_qty
+                store_data['totals']['unregistered'] += unregistered
+
+            if store_data['totals']['shipment'] > 0 or store_data['totals']['erp'] > 0:
+                daily_data.append(store_data)
+
     # ========================================
     # 1. 주별 검색 (Weekly Search) - Select year/month, see weekly breakdown
     # ========================================
     weekly_data = []
     weeks = []
     if search_type == 'weekly':
-        # Calculate weeks in the selected month
-        _, last_day = monthrange(year, month)
-        week_num = 1
-        day = 1
-        while day <= last_day:
-            week_start = date(year, month, day)
-            week_end_day = min(day + 6, last_day)
-            week_end = date(year, month, week_end_day)
-            weeks.append({
-                'num': week_num,
-                'start': week_start,
-                'end': week_end
-            })
-            day = week_end_day + 1
-            week_num += 1
+        # Calculate weeks in the selected month (Mon-Sun aligned)
+        weeks = build_month_weeks(year, month)
 
         # Build weekly data for each store
         for store in stores:
@@ -3679,6 +4232,7 @@ def erp_tracking_franchise():
                     ShipmentItem.shipment_date >= week['start'],
                     ShipmentItem.shipment_date <= week['end']
                 ).scalar() or 0
+                shipment_qty += get_jungsung_shipment_extra(store, week['start'], week['end'])
 
                 # ERP registration quantity for this store in this week
                 erp_regs = ERPRegistration.query.filter(
@@ -3691,7 +4245,7 @@ def erp_tracking_franchise():
                 erp_qty = 0
                 for reg in erp_regs:
                     qty_dict = reg.get_category_quantities()
-                    erp_qty += sum(qty_dict.values()) if qty_dict else 0
+                    erp_qty += erp_category_sum(qty_dict)
 
                 unregistered = shipment_qty - erp_qty if shipment_qty > erp_qty else 0
 
@@ -3738,6 +4292,7 @@ def erp_tracking_franchise():
                     ShipmentItem.shipment_date >= first_day,
                     ShipmentItem.shipment_date <= last_day
                 ).scalar() or 0
+                shipment_qty += get_jungsung_shipment_extra(store, first_day, last_day)
 
                 # ERP registration quantity for this store in this month
                 erp_regs = ERPRegistration.query.filter(
@@ -3750,7 +4305,7 @@ def erp_tracking_franchise():
                 erp_qty = 0
                 for reg in erp_regs:
                     qty_dict = reg.get_category_quantities()
-                    erp_qty += sum(qty_dict.values()) if qty_dict else 0
+                    erp_qty += erp_category_sum(qty_dict)
 
                 unregistered = shipment_qty - erp_qty if shipment_qty > erp_qty else 0
 
@@ -3874,6 +4429,7 @@ def erp_tracking_franchise():
                     ShipmentItem.shipment_date >= period['start'],
                     ShipmentItem.shipment_date <= period['end']
                 ).scalar() or 0
+                shipment_qty += get_jungsung_shipment_extra(store, period['start'], period['end'])
 
                 # ERP registration quantity for this store in this period
                 erp_regs = ERPRegistration.query.filter(
@@ -3886,7 +4442,7 @@ def erp_tracking_franchise():
                 erp_qty = 0
                 for reg in erp_regs:
                     qty_dict = reg.get_category_quantities()
-                    erp_qty += sum(qty_dict.values()) if qty_dict else 0
+                    erp_qty += erp_category_sum(qty_dict)
 
                 unregistered = shipment_qty - erp_qty if shipment_qty > erp_qty else 0
 
@@ -3906,11 +4462,17 @@ def erp_tracking_franchise():
 
     return render_template('admin/erp_tracking_franchise.html',
                            search_type=search_type,
+                           selected_category=selected_category,
+                           all_categories=all_categories,
                            year=year,
                            month=month,
                            date_from=date_from,
                            date_to=date_to,
                            view_type=view_type,
+                           daily_data=daily_data,
+                           daily_days=daily_days,
+                           daily_weeks=daily_weeks,
+                           daily_week_num=daily_week_num,
                            weekly_data=weekly_data,
                            weeks=weeks,
                            monthly_data=monthly_data,
@@ -3918,6 +4480,192 @@ def erp_tracking_franchise():
                            period_data=period_data,
                            periods=periods,
                            franchise=franchise)
+
+
+# ============================================
+# 월마감자료 (Monthly Closing Data - Franchise)
+# ============================================
+
+@admin_bp.route('/monthly-closing-franchise')
+@login_required
+@franchise_required
+def monthly_closing_franchise():
+    """Monthly closing data for franchise users.
+    Shows per-store 입고 (ERP registered, excl. 폐유) and 폐유 values.
+    Three search types: calendar (일별), monthly (주별 within month), period (기간검색)."""
+    from calendar import monthrange
+
+    search_type = request.args.get('search_type', 'monthly')
+    year = request.args.get('year', type=int) or date.today().year
+    month = request.args.get('month', type=int) or date.today().month
+
+    # Period search parameters
+    date_from = request.args.get('date_from')
+    date_to = request.args.get('date_to')
+    view_type = request.args.get('view_type', 'weekly')
+
+    # Set default date range if not specified
+    if not date_from or not date_to:
+        first_day = date(year, month, 1)
+        last_day = date(year, month, monthrange(year, month)[1])
+        date_from = first_day.strftime('%Y-%m-%d')
+        date_to = last_day.strftime('%Y-%m-%d')
+
+    date_from_parsed = datetime.strptime(date_from, '%Y-%m-%d').date()
+    date_to_parsed = datetime.strptime(date_to, '%Y-%m-%d').date()
+
+    # Get franchise
+    franchise = current_user.franchise
+    if not franchise:
+        flash('연결된 프랜차이즈 정보가 없습니다. 관리자에게 문의하세요.', 'danger')
+        return redirect(url_for('dashboard.franchise'))
+
+    stores = Store.query.filter_by(
+        franchise_id=franchise.id,
+        is_active=True
+    ).order_by(Store.name).all()
+
+    # Helper: extract 입고 and 폐유 from ERP registrations
+    def get_stockin_waste(store_id, start_date, end_date):
+        regs = ERPRegistration.query.filter(
+            ERPRegistration.store_id == store_id,
+            ERPRegistration.is_return == False,
+            ERPRegistration.registration_date >= start_date,
+            ERPRegistration.registration_date <= end_date
+        ).all()
+        stockin = 0
+        waste = 0
+        for reg in regs:
+            qty_dict = reg.get_category_quantities()
+            if qty_dict:
+                stockin += sum(v for k, v in qty_dict.items() if k != '폐유')
+                waste += qty_dict.get('폐유', 0)
+        return stockin, waste
+
+    # Helper: build store data for a list of periods
+    def build_closing_data(periods_list, period_key):
+        result = []
+        for store in stores:
+            store_data = {
+                'store': store,
+                period_key: [],
+                'totals': {'stockin': 0, 'waste': 0}
+            }
+            for period in periods_list:
+                si, wa = get_stockin_waste(store.id, period['start'], period['end'])
+                store_data[period_key].append({'stockin': si, 'waste': wa})
+                store_data['totals']['stockin'] += si
+                store_data['totals']['waste'] += wa
+            result.append(store_data)
+        return result
+
+    # ========================================
+    # 0. 일별 달력 (Daily Calendar)
+    # ========================================
+    daily_data = []
+    daily_days = []
+    daily_weeks_list = []
+    daily_week_num = 1
+
+    if search_type == 'calendar':
+        daily_weeks_list = build_month_weeks(year, month)
+
+        daily_week_num = request.args.get('week', type=int) or 1
+        if daily_week_num > len(daily_weeks_list):
+            daily_week_num = len(daily_weeks_list)
+        selected_week = daily_weeks_list[daily_week_num - 1]
+
+        weekday_names = ['월', '화', '수', '목', '금', '토', '일']
+        current_d = selected_week['start']
+        while current_d <= selected_week['end']:
+            daily_days.append({
+                'date': current_d,
+                'weekday': weekday_names[current_d.weekday()],
+                'label': current_d.strftime('%m/%d')
+            })
+            current_d += timedelta(days=1)
+
+        day_periods = [{'start': dd['date'], 'end': dd['date']} for dd in daily_days]
+        daily_data = build_closing_data(day_periods, 'days')
+
+    # ========================================
+    # 1. 월별 (주별 within month)
+    # ========================================
+    weekly_data = []
+    weeks = []
+
+    if search_type == 'monthly':
+        weeks = build_month_weeks(year, month)
+
+        weekly_data = build_closing_data(weeks, 'weeks')
+
+    # ========================================
+    # 2. 기간검색 (Period Search)
+    # ========================================
+    period_data = []
+    periods = []
+
+    if search_type == 'period':
+        if view_type == 'daily':
+            current = date_from_parsed
+            pn = 1
+            while current <= date_to_parsed:
+                periods.append({'num': pn, 'start': current, 'end': current, 'label': current.strftime('%m/%d')})
+                current += timedelta(days=1)
+                pn += 1
+        elif view_type == 'weekly':
+            current = date_from_parsed
+            pn = 1
+            while current <= date_to_parsed:
+                week_end = min(current + timedelta(days=6), date_to_parsed)
+                periods.append({'num': pn, 'start': current, 'end': week_end,
+                                'label': f'{current.strftime("%m/%d")}~{week_end.strftime("%m/%d")}'})
+                current = week_end + timedelta(days=1)
+                pn += 1
+        elif view_type == 'monthly':
+            cy, cm = date_from_parsed.year, date_from_parsed.month
+            pn = 1
+            while True:
+                fd = date(cy, cm, 1)
+                ld = date(cy, cm, monthrange(cy, cm)[1])
+                ps = max(fd, date_from_parsed)
+                pe = min(ld, date_to_parsed)
+                if ps > date_to_parsed:
+                    break
+                periods.append({'num': pn, 'start': ps, 'end': pe, 'label': f'{cy}년 {cm}월'})
+                cm += 1
+                if cm > 12:
+                    cm = 1
+                    cy += 1
+                pn += 1
+                if pe >= date_to_parsed:
+                    break
+        elif view_type == 'yearly':
+            pn = 1
+            for y in range(date_from_parsed.year, date_to_parsed.year + 1):
+                ps = max(date(y, 1, 1), date_from_parsed)
+                pe = min(date(y, 12, 31), date_to_parsed)
+                periods.append({'num': pn, 'start': ps, 'end': pe, 'label': f'{y}년'})
+                pn += 1
+
+        period_data = build_closing_data(periods, 'periods')
+
+    return render_template('admin/monthly_closing_franchise.html',
+                           search_type=search_type,
+                           year=year,
+                           month=month,
+                           date_from=date_from,
+                           date_to=date_to,
+                           view_type=view_type,
+                           franchise=franchise,
+                           daily_data=daily_data,
+                           daily_days=daily_days,
+                           daily_weeks=daily_weeks_list,
+                           daily_week_num=daily_week_num,
+                           weekly_data=weekly_data,
+                           weeks=weeks,
+                           period_data=period_data,
+                           periods=periods)
 
 
 # ============================================
@@ -3947,22 +4695,23 @@ def calculate_store_status(store_id):
     store.no_shipment_2months = (recent_shipment is None)
 
     # Check unused_store - no ERP registration (입고) in last 2 months
-    recent_stockin = ERPRegistration.query.filter(
+    recent_regs = ERPRegistration.query.filter(
         ERPRegistration.store_id == store_id,
         ERPRegistration.is_return == False,
-        ERPRegistration.stockin_qty > 0,
         ERPRegistration.registration_date >= two_months_ago
-    ).first()
-    store.unused_store = (recent_stockin is None)
+    ).all()
+    has_stockin = any(
+        sum(v for k, v in reg.get_category_quantities().items() if k != '폐유') > 0
+        for reg in recent_regs
+    )
+    store.unused_store = not has_stockin
 
     # Check uncollected_waste_oil - no waste oil (폐유) registered in last 2 months
-    recent_waste = ERPRegistration.query.filter(
-        ERPRegistration.store_id == store_id,
-        ERPRegistration.is_return == False,
-        ERPRegistration.waste_qty > 0,
-        ERPRegistration.registration_date >= two_months_ago
-    ).first()
-    store.uncollected_waste_oil = (recent_waste is None)
+    has_waste = any(
+        reg.get_category_quantities().get('폐유', 0) > 0
+        for reg in recent_regs
+    )
+    store.uncollected_waste_oil = not has_waste
 
     db.session.commit()
     return store
@@ -3986,7 +4735,7 @@ def update_store_status():
     value = data.get('value', False)
 
     # Validate field - only allow manual flags
-    if field not in ['closed_store', 'bad_debt_store']:
+    if field not in ['closed_store', 'bad_debt_store', 'external_purchase_store']:
         return jsonify({'success': False, 'message': '잘못된 필드입니다.'})
 
     # Verify store belongs to this jungsung

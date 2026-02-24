@@ -12,6 +12,10 @@
         transform: translateY(-2px);
         box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15) !important;
     }
+    a.stat-link {
+        text-decoration: none;
+        color: inherit;
+    }
     .dashboard-stat-card .stat-number {
         font-size: 2rem;
         font-weight: 700;
@@ -44,64 +48,72 @@
 <!-- Main Stats -->
 <div class="row g-3 mb-4">
     <div class="col-xl-3 col-md-6">
-        <div class="card dashboard-stat-card shadow-sm" style="border-left-color: #0d6efd;">
-            <div class="card-body">
-                <div class="d-flex justify-content-between align-items-start mb-2">
-                    <div>
-                        <p class="text-muted mb-1 small">전체 사용자</p>
-                        <div class="stat-number text-primary">{{ "{:,}".format(total_users) }}</div>
-                    </div>
-                    <div class="p-3 bg-primary bg-opacity-10 rounded">
-                        <i class="bi bi-people fs-4 text-primary"></i>
+        <a href="{{ url_for('admin.users_list') }}" class="stat-link">
+            <div class="card dashboard-stat-card shadow-sm" style="border-left-color: #0d6efd;">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-start mb-2">
+                        <div>
+                            <p class="text-muted mb-1 small">전체 사용자</p>
+                            <div class="stat-number text-primary">{{ "{:,}".format(total_users) }}</div>
+                        </div>
+                        <div class="p-3 bg-primary bg-opacity-10 rounded">
+                            <i class="bi bi-people fs-4 text-primary"></i>
+                        </div>
                     </div>
                 </div>
             </div>
-        </div>
+        </a>
     </div>
     <div class="col-xl-3 col-md-6">
-        <div class="card dashboard-stat-card shadow-sm" style="border-left-color: #198754;">
-            <div class="card-body">
-                <div class="d-flex justify-content-between align-items-start mb-2">
-                    <div>
-                        <p class="text-muted mb-1 small">지사</p>
-                        <div class="stat-number text-success">{{ "{:,}".format(branch_count) }}</div>
-                    </div>
-                    <div class="p-3 bg-success bg-opacity-10 rounded">
-                        <i class="bi bi-building fs-4 text-success"></i>
+        <a href="{{ url_for('admin.branches_list') }}" class="stat-link">
+            <div class="card dashboard-stat-card shadow-sm" style="border-left-color: #198754;">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-start mb-2">
+                        <div>
+                            <p class="text-muted mb-1 small">지사</p>
+                            <div class="stat-number text-success">{{ "{:,}".format(branch_count) }}</div>
+                        </div>
+                        <div class="p-3 bg-success bg-opacity-10 rounded">
+                            <i class="bi bi-building fs-4 text-success"></i>
+                        </div>
                     </div>
                 </div>
             </div>
-        </div>
+        </a>
     </div>
     <div class="col-xl-3 col-md-6">
-        <div class="card dashboard-stat-card shadow-sm" style="border-left-color: #0dcaf0;">
-            <div class="card-body">
-                <div class="d-flex justify-content-between align-items-start mb-2">
-                    <div>
-                        <p class="text-muted mb-1 small">프랜차이즈</p>
-                        <div class="stat-number text-info">{{ "{:,}".format(franchise_count) }}</div>
-                    </div>
-                    <div class="p-3 bg-info bg-opacity-10 rounded">
-                        <i class="bi bi-shop fs-4 text-info"></i>
+        <a href="{{ url_for('admin.franchises_list') }}" class="stat-link">
+            <div class="card dashboard-stat-card shadow-sm" style="border-left-color: #0dcaf0;">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-start mb-2">
+                        <div>
+                            <p class="text-muted mb-1 small">프랜차이즈</p>
+                            <div class="stat-number text-info">{{ "{:,}".format(franchise_count) }}</div>
+                        </div>
+                        <div class="p-3 bg-info bg-opacity-10 rounded">
+                            <i class="bi bi-shop fs-4 text-info"></i>
+                        </div>
                     </div>
                 </div>
             </div>
-        </div>
+        </a>
     </div>
     <div class="col-xl-3 col-md-6">
-        <div class="card dashboard-stat-card shadow-sm" style="border-left-color: #ffc107;">
-            <div class="card-body">
-                <div class="d-flex justify-content-between align-items-start mb-2">
-                    <div>
-                        <p class="text-muted mb-1 small">매장</p>
-                        <div class="stat-number text-warning">{{ "{:,}".format(store_count) }}</div>
-                    </div>
-                    <div class="p-3 bg-warning bg-opacity-10 rounded">
-                        <i class="bi bi-shop-window fs-4 text-warning"></i>
+        <a href="{{ url_for('admin.stores_list') }}" class="stat-link">
+            <div class="card dashboard-stat-card shadow-sm" style="border-left-color: #ffc107;">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-start mb-2">
+                        <div>
+                            <p class="text-muted mb-1 small">매장</p>
+                            <div class="stat-number text-warning">{{ "{:,}".format(store_count) }}</div>
+                        </div>
+                        <div class="p-3 bg-warning bg-opacity-10 rounded">
+                            <i class="bi bi-shop-window fs-4 text-warning"></i>
+                        </div>
                     </div>
                 </div>
             </div>
-        </div>
+        </a>
     </div>
 </div>
 

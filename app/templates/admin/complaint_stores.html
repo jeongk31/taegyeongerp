@@ -113,7 +113,7 @@
                         <th rowspan="2" style="width: 120px;">거래처</th>
                         <th rowspan="2" style="width: 120px;">담당중상</th>
                         <th colspan="3" class="table-secondary">자동 플래그</th>
-                        <th colspan="2" class="table-info">수동 플래그</th>
+                        <th colspan="3" class="table-info">수동 플래그</th>
                     </tr>
                     <tr>
                         <th class="table-secondary">2달 이상<br>출고x</th>
@@ -121,6 +121,7 @@
                         <th class="table-secondary">폐유미수거<br>매장</th>
                         <th class="table-info">폐업<br>매장</th>
                         <th class="table-info">악성미수<br>매장</th>
+                        <th class="table-info">외부사입<br>매장</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -161,10 +162,15 @@
                                   title="{% if store.bad_debt_store %}악성미수 매장{% else %}정상{% endif %}">
                             </span>
                         </td>
+                        <td>
+                            <span class="status-badge {% if store.external_purchase_store %}active{% else %}inactive{% endif %}"
+                                  title="{% if store.external_purchase_store %}외부사입 매장{% else %}정상{% endif %}">
+                            </span>
+                        </td>
                     </tr>
                     {% else %}
                     <tr>
-                        <td colspan="11" class="text-center text-muted py-4">
+                        <td colspan="12" class="text-center text-muted py-4">
                             등록된 매장이 없습니다.
                         </td>
                     </tr>

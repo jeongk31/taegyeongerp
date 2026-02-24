@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}주별 ERP 등록수량 체크 - 태경바이오 ERP{% endblock %}
+{% block title %}ERP 등록수량 체크 - 태경바이오 ERP{% endblock %}
 
 {% block extra_css %}
 <style>
@@ -41,6 +41,24 @@
         background-color: #0d6efd;
         color: white;
     }
+    .week-tab {
+        display: inline-block;
+        padding: 0.25rem 0.6rem;
+        margin: 0.15rem;
+        border-radius: 0.25rem;
+        font-size: 0.8rem;
+        text-decoration: none;
+        border: 1px solid #dee2e6;
+        color: #495057;
+    }
+    .week-tab.active {
+        background-color: #0d6efd;
+        color: #fff;
+        border-color: #0d6efd;
+    }
+    .week-tab:hover:not(.active) {
+        background-color: #f8f9fa;
+    }
 </style>
 {% endblock %}
 
@@ -49,6 +67,107 @@
     <h2>주별 ERP 등록수량 체크</h2>
 </div>
 
+<!-- 0. 일별 달력 (Daily Calendar) -->
+{% if search_type == 'calendar' %}
+<div class="card mb-4">
+    <div class="card-header">
+        <span>일별 검색 ({{ year }}년 {{ month }}월 {{ daily_week_num }}주)</span>
+    </div>
+    <div class="card-body py-2">
+        <form method="GET" action="{{ url_for('admin.erp_tracking') }}" class="row g-2 align-items-center">
+            <input type="hidden" name="search_type" value="calendar">
+            <div class="col-auto">
+                <select name="year" class="form-select form-select-sm" style="width: 100px;">
+                    {% for y in range(year - 2, year + 3) %}
+                    <option value="{{ y }}" {% if y == year %}selected{% endif %}>{{ y }}년</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-auto">
+                <select name="month" class="form-select form-select-sm" style="width: 90px;">
+                    {% for m in range(1, 13) %}
+                    <option value="{{ m }}" {% if m == month %}selected{% endif %}>{{ m }}월</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-auto">
+                <label class="form-label mb-0">품목</label>
+                <select name="category" class="form-select form-select-sm" style="width: 120px;">
+                    <option value="전체" {% if selected_category == '전체' %}selected{% endif %}>전체</option>
+                    {% for cat in all_categories %}
+                    <option value="{{ cat.name }}" {% if selected_category == cat.name %}selected{% endif %}>{{ cat.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-auto">
+                <button type="submit" class="btn btn-primary btn-sm" style="margin-top: 1.5rem;">검색</button>
+            </div>
+        </form>
+        <div class="mt-2">
+            {% for week in daily_weeks %}
+            <a href="{{ url_for('admin.erp_tracking', search_type='calendar', year=year, month=month, week=week.num, category=selected_category) }}"
+               class="week-tab {% if week.num == daily_week_num %}active{% endif %}">
+                {{ week.num }}주 ({{ week.start.strftime('%m/%d') }}~{{ week.end.strftime('%m/%d') }})
+            </a>
+            {% endfor %}
+        </div>
+    </div>
+    <div class="card-body p-0 border-top">
+        <div class="table-responsive" style="max-height: 500px; overflow-y: auto;">
+            <table class="table table-sm table-bordered tracking-table mb-0">
+                <thead>
+                    <tr>
+                        <th rowspan="2" class="align-middle">담당지사</th>
+                        <th rowspan="2" class="align-middle">담당자</th>
+                        <th rowspan="2" class="align-middle">프랜차이즈명</th>
+                        <th rowspan="2" class="align-middle">매장명</th>
+                        {% for day in daily_days %}
+                        <th colspan="{{ categories|length }}" class="text-center week-header">{{ day.weekday }}<br><small>{{ day.label }}</small></th>
+                        {% endfor %}
+                        <th colspan="{{ categories|length }}" class="text-center total-col">합계</th>
+                    </tr>
+                    <tr>
+                        {% for day in daily_days %}
+                        {% for cat in categories %}
+                        <th class="text-center">{{ cat.name }}</th>
+                        {% endfor %}
+                        {% endfor %}
+                        {% for cat in categories %}
+                        <th class="text-center total-col">{{ cat.name }}</th>
+                        {% endfor %}
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for data in daily_data %}
+                    <tr>
+                        <td>{{ data.branch.name if data.branch else '-' }}</td>
+                        <td>{{ data.jungsung.contact_person if data.jungsung else '-' }}</td>
+                        <td>{{ data.franchise.name if data.franchise else '-' }}</td>
+                        <td>{{ data.store.name }}</td>
+                        {% for day_data in data.days %}
+                        {% for cat in categories %}
+                        <td class="text-end">{{ day_data.get(cat.name, 0) }}</td>
+                        {% endfor %}
+                        {% endfor %}
+                        {% for cat in categories %}
+                        <td class="text-end total-col fw-bold">{{ data.totals.get(cat.name, 0) }}</td>
+                        {% endfor %}
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="{{ 4 + (daily_days|length * categories|length) + categories|length }}" class="text-center text-muted py-3">
+                            등록된 매장이 없습니다.
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+{% if search_type == 'default' %}
 <!-- 월별 보기 (Weekly View within Month) -->
 <div class="card mb-4">
     <div class="card-header">
@@ -71,6 +190,15 @@
                     <button type="submit" name="month" value="{{ m }}" class="btn btn-outline-secondary {% if m == month %}active{% endif %}">{{ m }}월</button>
                     {% endfor %}
                 </div>
+            </div>
+            <div class="col-auto">
+                <label class="form-label mb-0">품목</label>
+                <select name="category" class="form-select form-select-sm" style="width: 120px;" onchange="this.form.submit()">
+                    <option value="전체" {% if selected_category == '전체' %}selected{% endif %}>전체</option>
+                    {% for cat in all_categories %}
+                    <option value="{{ cat.name }}" {% if selected_category == cat.name %}selected{% endif %}>{{ cat.name }}</option>
+                    {% endfor %}
+                </select>
             </div>
         </form>
     </div>
@@ -137,6 +265,7 @@
         <form method="GET" action="{{ url_for('admin.erp_tracking') }}" class="row g-2 align-items-center">
             <input type="hidden" name="year" value="{{ year }}">
             <input type="hidden" name="month" value="{{ month }}">
+            <input type="hidden" name="category" value="{{ selected_category }}">
             <div class="col-auto">
                 <div class="d-flex align-items-center gap-1">
                     <input type="date" name="date_from" class="form-control form-control-sm" style="width: 140px;" value="{{ date_from }}">
@@ -204,4 +333,5 @@
         </div>
     </div>
 </div>
+{% endif %}
 {% endblock %}

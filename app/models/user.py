@@ -5,6 +5,16 @@ from datetime import datetime
 import enum
 
 
+# Association table for Franchise <-> Category many-to-many
+franchise_categories = db.Table('franchise_categories',
+    db.Column('id', db.Integer, primary_key=True),
+    db.Column('franchise_id', db.Integer, db.ForeignKey('franchises.id', ondelete='CASCADE'), nullable=False),
+    db.Column('category_id', db.Integer, db.ForeignKey('categories.id', ondelete='CASCADE'), nullable=False),
+    db.Column('created_at', db.DateTime, default=datetime.utcnow),
+    db.UniqueConstraint('franchise_id', 'category_id', name='uq_franchise_category')
+)
+
+
 class UserRole(enum.Enum):
     ADMIN = 'admin'           # 관리자 - Super admin
     BRANCH = 'branch'         # 지사 - Branch manager
@@ -162,6 +172,11 @@ class Franchise(db.Model):
     # Relationship to stores
     stores = db.relationship('Store', backref='franchise', lazy=True)
 
+    # Many-to-many relationship with Category (품목)
+    categories = db.relationship('Category', secondary='franchise_categories',
+                                 backref=db.backref('franchises', lazy=True),
+                                 lazy=True)
+
     def __repr__(self):
         return f'<Franchise {self.name}>'
 
@@ -193,6 +208,7 @@ class Store(db.Model):
     # Manual flags (set by 중상)
     closed_store = db.Column(db.Boolean, default=False)  # 폐업매장
     bad_debt_store = db.Column(db.Boolean, default=False)  # 악성미수매장
+    external_purchase_store = db.Column(db.Boolean, default=False)  # 외부사입매장
 
     is_active = db.Column(db.Boolean, default=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
@@ -336,8 +352,6 @@ class ERPRegistration(db.Model):
     store_id = db.Column(db.Integer, db.ForeignKey('stores.id'), nullable=False)  # 매장
     jungsung_id = db.Column(db.Integer, db.ForeignKey('jungsungs.id'), nullable=False)  # 담당중상
 
-    stockin_qty = db.Column(db.Integer, default=0)  # 입고 수량 (deprecated - use category_quantities)
-    waste_qty = db.Column(db.Integer, default=0)  # 폐유 수량 (deprecated - use category_quantities)
     category_quantities = db.Column(db.Text, nullable=True)  # JSON: {"식용유": 5, "밀가루": 3, "폐유": 2}
     is_return = db.Column(db.Boolean, default=False)  # 반품 여부
     is_completed = db.Column(db.Boolean, default=False)  # 완료 여부
