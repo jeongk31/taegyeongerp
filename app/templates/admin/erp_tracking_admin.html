@@ -23,9 +23,24 @@
     .col-erp {
         background-color: #d4edda;
     }
+    .col-waste {
+        background-color: #e8daef;
+    }
     .col-unregistered {
         background-color: #fff3cd;
     }
+    .unreg-pos {
+        color: #0d6efd !important;
+        font-weight: bold;
+    }
+    .unreg-neg {
+        color: #dc3545 !important;
+        font-weight: bold;
+    }
+    .text-shipment { color: #fd7e14 !important; }
+    .text-erp { color: #198754 !important; }
+    .text-waste { color: #6f42c1 !important; }
+    .text-unreg { color: #212529; }
     .total-col {
         background-color: #e9ecef;
         font-weight: bold;
@@ -56,6 +71,97 @@
     <h2>ERP 등록수량 체크</h2>
 </div>
 
+{# --- Common filter macros --- #}
+{% macro view_mode_field() %}
+<div class="col-auto">
+    <label class="form-label mb-0">보기</label>
+    <select name="view_mode" class="form-select form-select-sm" style="width: 130px;">
+        <option value="store" {% if view_mode == 'store' %}selected{% endif %}>매장별</option>
+        <option value="franchise" {% if view_mode == 'franchise' %}selected{% endif %}>프랜차이즈별</option>
+    </select>
+</div>
+{% endmacro %}
+
+{% macro franchise_store_fields() %}
+<div class="col-auto">
+    <label class="form-label mb-0">프랜차이즈</label>
+    <select name="franchise_id" class="form-select form-select-sm franchise-filter-select" style="width: 150px;">
+        <option value="">전체</option>
+        {% for f in franchises %}
+        <option value="{{ f.id }}" {% if franchise_filter == f.id %}selected{% endif %}>{{ f.name }}</option>
+        {% endfor %}
+    </select>
+</div>
+<div class="col-auto">
+    <label class="form-label mb-0">매장</label>
+    <select name="store_id" class="form-select form-select-sm store-filter-select" style="width: 150px;">
+        <option value="">전체</option>
+        {% if franchise_filter %}
+        {% for s in all_stores_for_filter %}
+        {% if s.franchise_id == franchise_filter %}
+        <option value="{{ s.id }}" {% if store_filter == s.id %}selected{% endif %}>{{ s.name }}</option>
+        {% endif %}
+        {% endfor %}
+        {% endif %}
+    </select>
+</div>
+{% endmacro %}
+
+{# --- Table macros --- #}
+{% macro store_header_cols() %}
+{% if view_mode == 'franchise' %}
+<th rowspan="2" class="align-middle">지사</th>
+<th rowspan="2" class="align-middle">프랜차이즈</th>
+{% else %}
+<th rowspan="2" class="align-middle">지사</th>
+<th rowspan="2" class="align-middle">중상</th>
+<th rowspan="2" class="align-middle">프랜차이즈</th>
+<th rowspan="2" class="align-middle">매장명</th>
+{% endif %}
+{% endmacro %}
+
+{% macro period_sub_headers(items) %}
+{% for item in items %}
+<th class="text-center col-shipment text-shipment">출고</th>
+<th class="text-center col-erp text-erp">ERP</th>
+<th class="text-center col-waste text-waste">폐유</th>
+<th class="text-center col-unregistered text-unreg">미등록</th>
+{% endfor %}
+<th class="text-center total-col text-shipment">출고</th>
+<th class="text-center total-col text-erp">ERP</th>
+<th class="text-center total-col col-waste text-waste">폐유</th>
+<th class="text-center total-col text-unreg">미등록</th>
+{% endmacro %}
+
+{% macro store_data_cols(data) %}
+{% if view_mode == 'franchise' %}
+<td>{{ data.branch.name if data.branch else '-' }}</td>
+<td>{{ data.store.name }}</td>
+{% else %}
+<td>{{ data.branch.name if data.branch else '-' }}</td>
+<td>{{ data.jungsung.contact_person if data.jungsung else '-' }}</td>
+<td>{{ data.franchise.name if data.franchise else '-' }}</td>
+<td>{{ data.store.name }}</td>
+{% endif %}
+{% endmacro %}
+
+{% macro period_data_cells(period_item) %}
+{% set has_data = period_item.shipment > 0 or period_item.erp > 0 %}
+<td class="text-end col-shipment text-shipment">{{ period_item.shipment if has_data else '' }}</td>
+<td class="text-end col-erp text-erp">{{ period_item.erp if has_data else '' }}</td>
+<td class="text-end col-waste text-waste">{{ period_item.waste if period_item.waste > 0 else '' }}</td>
+<td class="text-end col-unregistered{% if has_data and period_item.unregistered > 0 %} unreg-pos{% elif has_data and period_item.unregistered < 0 %} unreg-neg{% endif %}">{{ period_item.unregistered if has_data else '' }}</td>
+{% endmacro %}
+
+{% macro totals_cells(totals) %}
+<td class="text-end total-col text-shipment">{{ totals.shipment }}</td>
+<td class="text-end total-col text-erp">{{ totals.erp }}</td>
+<td class="text-end total-col col-waste text-waste">{{ totals.waste }}</td>
+<td class="text-end total-col{% if totals.unregistered > 0 %} unreg-pos{% elif totals.unregistered < 0 %} unreg-neg{% endif %}">{{ totals.unregistered }}</td>
+{% endmacro %}
+
+{% set info_cols = 2 if view_mode == 'franchise' else 4 %}
+
 <!-- 0. 일별 검색 (Daily Calendar) -->
 {% if search_type == 'calendar' %}
 <div class="card mb-4">
@@ -74,7 +180,7 @@
         </div>
     </div>
     <div class="card-body py-2">
-        <form method="GET" action="{{ url_for('admin.erp_tracking_admin') }}" class="row g-2 align-items-center">
+        <form method="GET" action="{{ url_for('admin.erp_tracking_admin') }}" class="row g-2 align-items-end">
             <input type="hidden" name="search_type" value="calendar">
             <div class="col-auto">
                 <label class="form-label mb-0">연도</label>
@@ -97,19 +203,21 @@
                 <select name="category" class="form-select form-select-sm" style="width: 120px;">
                     <option value="전체" {% if selected_category == '전체' %}selected{% endif %}>전체</option>
                     {% for cat in all_categories %}
-                    {% if cat.name != '폐유' %}
+                    {% if not cat.is_waste %}
                     <option value="{{ cat.name }}" {% if selected_category == cat.name %}selected{% endif %}>{{ cat.name }}</option>
                     {% endif %}
                     {% endfor %}
                 </select>
             </div>
+            {{ view_mode_field() }}
+            {{ franchise_store_fields() }}
             <div class="col-auto">
-                <button type="submit" class="btn btn-primary btn-sm" style="margin-top: 1.5rem;">검색</button>
+                <button type="submit" class="btn btn-primary btn-sm">검색</button>
             </div>
         </form>
         <div class="mt-2">
             {% for week in daily_weeks %}
-            <a href="{{ url_for('admin.erp_tracking_admin', search_type='calendar', year=year, month=month, week=week.num, category=selected_category) }}"
+            <a href="{{ url_for('admin.erp_tracking_admin', search_type='calendar', year=year, month=month, week=week.num, category=selected_category, view_mode=view_mode, franchise_id=franchise_filter or '', store_id=store_filter or '') }}"
                class="week-tab {% if week.num == daily_week_num %}active{% endif %}">
                 {{ week.num }}주 ({{ week.start.strftime('%m/%d') }}~{{ week.end.strftime('%m/%d') }})
             </a>
@@ -121,47 +229,28 @@
             <table id="dailyTable" class="table table-sm table-bordered tracking-table mb-0">
                 <thead>
                     <tr>
-                        <th rowspan="2" class="align-middle">지사</th>
-                        <th rowspan="2" class="align-middle">중상</th>
-                        <th rowspan="2" class="align-middle">프랜차이즈</th>
-                        <th rowspan="2" class="align-middle">매장명</th>
+                        {{ store_header_cols() }}
                         {% for day in daily_days %}
-                        <th colspan="3" class="text-center">{{ day.weekday }}<br><small>{{ day.label }}</small></th>
+                        <th colspan="4" class="text-center">{{ day.weekday }}<br><small>{{ day.label }}</small></th>
                         {% endfor %}
-                        <th colspan="3" class="text-center total-col">합계</th>
+                        <th colspan="4" class="text-center total-col">합계</th>
                     </tr>
                     <tr>
-                        {% for day in daily_days %}
-                        <th class="text-center col-shipment">출고</th>
-                        <th class="text-center col-erp">ERP</th>
-                        <th class="text-center col-unregistered">미등록</th>
-                        {% endfor %}
-                        <th class="text-center total-col">출고</th>
-                        <th class="text-center total-col">ERP</th>
-                        <th class="text-center total-col">미등록</th>
+                        {{ period_sub_headers(daily_days) }}
                     </tr>
                 </thead>
                 <tbody>
                     {% for data in daily_data %}
                     <tr>
-                        <td>{{ data.branch.name if data.branch else '-' }}</td>
-                        <td>{{ data.jungsung.contact_person if data.jungsung else '-' }}</td>
-                        <td>{{ data.franchise.name if data.franchise else '-' }}</td>
-                        <td>{{ data.store.name }}</td>
+                        {{ store_data_cols(data) }}
                         {% for day_data in data.days %}
-                        <td class="text-end col-shipment">{{ day_data.shipment if day_data.shipment > 0 else '' }}</td>
-                        <td class="text-end col-erp">{{ day_data.erp if day_data.erp > 0 else '' }}</td>
-                        <td class="text-end col-unregistered">{{ day_data.unregistered if day_data.unregistered > 0 else '' }}</td>
+                        {{ period_data_cells(day_data) }}
                         {% endfor %}
-                        <td class="text-end total-col">{{ data.totals.shipment }}</td>
-                        <td class="text-end total-col">{{ data.totals.erp }}</td>
-                        <td class="text-end total-col">{{ data.totals.unregistered }}</td>
+                        {{ totals_cells(data.totals) }}
                     </tr>
                     {% else %}
                     <tr>
-                        <td colspan="{{ 4 + (daily_days|length * 3) + 3 }}" class="text-center text-muted py-3">
-                            데이터가 없습니다.
-                        </td>
+                        <td colspan="{{ info_cols + (daily_days|length * 4) + 4 }}" class="text-center text-muted py-3">데이터가 없습니다.</td>
                     </tr>
                     {% endfor %}
                 </tbody>
@@ -177,19 +266,13 @@
     <div class="card-header d-flex justify-content-between align-items-center">
         <span>주별 검색 ({{ year }}년 {{ month }}월)</span>
         <div class="export-buttons no-print">
-            <button class="btn btn-success btn-sm export-btn" onclick="exportTableToExcel('weeklyTable', 'ERP등록체크_주별_{{ year }}{{ month }}')">
-                <i class="bi bi-file-earmark-excel"></i> Excel
-            </button>
-            <button class="btn btn-danger btn-sm export-btn" onclick="exportTableToPDF('weeklyTable', 'ERP등록체크_주별_{{ year }}{{ month }}')">
-                <i class="bi bi-file-earmark-pdf"></i> PDF
-            </button>
-            <button class="btn btn-secondary btn-sm export-btn" onclick="printTable()">
-                <i class="bi bi-printer"></i> 인쇄
-            </button>
+            <button class="btn btn-success btn-sm export-btn" onclick="exportTableToExcel('weeklyTable', 'ERP등록체크_주별_{{ year }}{{ month }}')"><i class="bi bi-file-earmark-excel"></i> Excel</button>
+            <button class="btn btn-danger btn-sm export-btn" onclick="exportTableToPDF('weeklyTable', 'ERP등록체크_주별_{{ year }}{{ month }}')"><i class="bi bi-file-earmark-pdf"></i> PDF</button>
+            <button class="btn btn-secondary btn-sm export-btn" onclick="printTable()"><i class="bi bi-printer"></i> 인쇄</button>
         </div>
     </div>
     <div class="card-body py-2">
-        <form method="GET" action="{{ url_for('admin.erp_tracking_admin') }}" class="row g-2 align-items-center">
+        <form method="GET" action="{{ url_for('admin.erp_tracking_admin') }}" class="row g-2 align-items-end">
             <input type="hidden" name="search_type" value="weekly">
             <div class="col-auto">
                 <label class="form-label mb-0">연도</label>
@@ -211,15 +294,15 @@
                 <label class="form-label mb-0">품목</label>
                 <select name="category" class="form-select form-select-sm" style="width: 120px;">
                     <option value="전체" {% if selected_category == '전체' %}selected{% endif %}>전체</option>
-                    {% for cat in all_categories %}
-                    {% if cat.name != '폐유' %}
+                    {% for cat in all_categories %}{% if not cat.is_waste %}
                     <option value="{{ cat.name }}" {% if selected_category == cat.name %}selected{% endif %}>{{ cat.name }}</option>
-                    {% endif %}
-                    {% endfor %}
+                    {% endif %}{% endfor %}
                 </select>
             </div>
+            {{ view_mode_field() }}
+            {{ franchise_store_fields() }}
             <div class="col-auto">
-                <button type="submit" class="btn btn-primary btn-sm" style="margin-top: 1.5rem;">검색</button>
+                <button type="submit" class="btn btn-primary btn-sm">검색</button>
             </div>
         </form>
     </div>
@@ -228,48 +311,23 @@
             <table id="weeklyTable" class="table table-sm table-bordered tracking-table mb-0">
                 <thead>
                     <tr>
-                        <th rowspan="2" class="align-middle">지사</th>
-                        <th rowspan="2" class="align-middle">중상</th>
-                        <th rowspan="2" class="align-middle">프랜차이즈</th>
-                        <th rowspan="2" class="align-middle">매장명</th>
+                        {{ store_header_cols() }}
                         {% for week in weeks %}
-                        <th colspan="3" class="text-center">{{ week.num }}주 ({{ week.start.strftime('%m/%d') }}~{{ week.end.strftime('%m/%d') }})</th>
+                        <th colspan="4" class="text-center">{{ week.num }}주 ({{ week.start.strftime('%m/%d') }}~{{ week.end.strftime('%m/%d') }})</th>
                         {% endfor %}
-                        <th colspan="3" class="text-center total-col">합계</th>
+                        <th colspan="4" class="text-center total-col">합계</th>
                     </tr>
-                    <tr>
-                        {% for week in weeks %}
-                        <th class="text-center col-shipment">출고</th>
-                        <th class="text-center col-erp">ERP</th>
-                        <th class="text-center col-unregistered">미등록</th>
-                        {% endfor %}
-                        <th class="text-center total-col">출고</th>
-                        <th class="text-center total-col">ERP</th>
-                        <th class="text-center total-col">미등록</th>
-                    </tr>
+                    <tr>{{ period_sub_headers(weeks) }}</tr>
                 </thead>
                 <tbody>
                     {% for data in weekly_data %}
                     <tr>
-                        <td>{{ data.branch.name if data.branch else '-' }}</td>
-                        <td>{{ data.jungsung.contact_person if data.jungsung else '-' }}</td>
-                        <td>{{ data.franchise.name if data.franchise else '-' }}</td>
-                        <td>{{ data.store.name }}</td>
-                        {% for week_data in data.weeks %}
-                        <td class="text-end col-shipment">{{ week_data.shipment if week_data.shipment > 0 else '' }}</td>
-                        <td class="text-end col-erp">{{ week_data.erp if week_data.erp > 0 else '' }}</td>
-                        <td class="text-end col-unregistered">{{ week_data.unregistered if week_data.unregistered > 0 else '' }}</td>
-                        {% endfor %}
-                        <td class="text-end total-col">{{ data.totals.shipment }}</td>
-                        <td class="text-end total-col">{{ data.totals.erp }}</td>
-                        <td class="text-end total-col">{{ data.totals.unregistered }}</td>
+                        {{ store_data_cols(data) }}
+                        {% for week_data in data.weeks %}{{ period_data_cells(week_data) }}{% endfor %}
+                        {{ totals_cells(data.totals) }}
                     </tr>
                     {% else %}
-                    <tr>
-                        <td colspan="{{ 4 + (weeks|length * 3) + 3 }}" class="text-center text-muted py-3">
-                            데이터가 없습니다.
-                        </td>
-                    </tr>
+                    <tr><td colspan="{{ info_cols + (weeks|length * 4) + 4 }}" class="text-center text-muted py-3">데이터가 없습니다.</td></tr>
                     {% endfor %}
                 </tbody>
             </table>
@@ -284,19 +342,13 @@
     <div class="card-header d-flex justify-content-between align-items-center">
         <span>월별 검색 ({{ year }}년)</span>
         <div class="export-buttons no-print">
-            <button class="btn btn-success btn-sm export-btn" onclick="exportTableToExcel('monthlyTable', 'ERP등록체크_월별_{{ year }}')">
-                <i class="bi bi-file-earmark-excel"></i> Excel
-            </button>
-            <button class="btn btn-danger btn-sm export-btn" onclick="exportTableToPDF('monthlyTable', 'ERP등록체크_월별_{{ year }}')">
-                <i class="bi bi-file-earmark-pdf"></i> PDF
-            </button>
-            <button class="btn btn-secondary btn-sm export-btn" onclick="printTable()">
-                <i class="bi bi-printer"></i> 인쇄
-            </button>
+            <button class="btn btn-success btn-sm export-btn" onclick="exportTableToExcel('monthlyTable', 'ERP등록체크_월별_{{ year }}')"><i class="bi bi-file-earmark-excel"></i> Excel</button>
+            <button class="btn btn-danger btn-sm export-btn" onclick="exportTableToPDF('monthlyTable', 'ERP등록체크_월별_{{ year }}')"><i class="bi bi-file-earmark-pdf"></i> PDF</button>
+            <button class="btn btn-secondary btn-sm export-btn" onclick="printTable()"><i class="bi bi-printer"></i> 인쇄</button>
         </div>
     </div>
     <div class="card-body py-2">
-        <form method="GET" action="{{ url_for('admin.erp_tracking_admin') }}" class="row g-2 align-items-center">
+        <form method="GET" action="{{ url_for('admin.erp_tracking_admin') }}" class="row g-2 align-items-end">
             <input type="hidden" name="search_type" value="monthly">
             <div class="col-auto">
                 <label class="form-label mb-0">연도</label>
@@ -310,15 +362,15 @@
                 <label class="form-label mb-0">품목</label>
                 <select name="category" class="form-select form-select-sm" style="width: 120px;">
                     <option value="전체" {% if selected_category == '전체' %}selected{% endif %}>전체</option>
-                    {% for cat in all_categories %}
-                    {% if cat.name != '폐유' %}
+                    {% for cat in all_categories %}{% if not cat.is_waste %}
                     <option value="{{ cat.name }}" {% if selected_category == cat.name %}selected{% endif %}>{{ cat.name }}</option>
-                    {% endif %}
-                    {% endfor %}
+                    {% endif %}{% endfor %}
                 </select>
             </div>
+            {{ view_mode_field() }}
+            {{ franchise_store_fields() }}
             <div class="col-auto">
-                <button type="submit" class="btn btn-primary btn-sm" style="margin-top: 1.5rem;">검색</button>
+                <button type="submit" class="btn btn-primary btn-sm">검색</button>
             </div>
         </form>
     </div>
@@ -327,48 +379,23 @@
             <table id="monthlyTable" class="table table-sm table-bordered tracking-table mb-0">
                 <thead>
                     <tr>
-                        <th rowspan="2" class="align-middle">지사</th>
-                        <th rowspan="2" class="align-middle">중상</th>
-                        <th rowspan="2" class="align-middle">프랜차이즈</th>
-                        <th rowspan="2" class="align-middle">매장명</th>
+                        {{ store_header_cols() }}
                         {% for m in months_list %}
-                        <th colspan="3" class="text-center">{{ m.name }}</th>
+                        <th colspan="4" class="text-center">{{ m.name }}</th>
                         {% endfor %}
-                        <th colspan="3" class="text-center total-col">합계</th>
+                        <th colspan="4" class="text-center total-col">합계</th>
                     </tr>
-                    <tr>
-                        {% for m in months_list %}
-                        <th class="text-center col-shipment">출고</th>
-                        <th class="text-center col-erp">ERP</th>
-                        <th class="text-center col-unregistered">미등록</th>
-                        {% endfor %}
-                        <th class="text-center total-col">출고</th>
-                        <th class="text-center total-col">ERP</th>
-                        <th class="text-center total-col">미등록</th>
-                    </tr>
+                    <tr>{{ period_sub_headers(months_list) }}</tr>
                 </thead>
                 <tbody>
                     {% for data in monthly_data %}
                     <tr>
-                        <td>{{ data.branch.name if data.branch else '-' }}</td>
-                        <td>{{ data.jungsung.contact_person if data.jungsung else '-' }}</td>
-                        <td>{{ data.franchise.name if data.franchise else '-' }}</td>
-                        <td>{{ data.store.name }}</td>
-                        {% for month_data in data.months %}
-                        <td class="text-end col-shipment">{{ month_data.shipment if month_data.shipment > 0 else '' }}</td>
-                        <td class="text-end col-erp">{{ month_data.erp if month_data.erp > 0 else '' }}</td>
-                        <td class="text-end col-unregistered">{{ month_data.unregistered if month_data.unregistered > 0 else '' }}</td>
-                        {% endfor %}
-                        <td class="text-end total-col">{{ data.totals.shipment }}</td>
-                        <td class="text-end total-col">{{ data.totals.erp }}</td>
-                        <td class="text-end total-col">{{ data.totals.unregistered }}</td>
+                        {{ store_data_cols(data) }}
+                        {% for month_data in data.months %}{{ period_data_cells(month_data) }}{% endfor %}
+                        {{ totals_cells(data.totals) }}
                     </tr>
                     {% else %}
-                    <tr>
-                        <td colspan="{{ 4 + (months_list|length * 3) + 3 }}" class="text-center text-muted py-3">
-                            데이터가 없습니다.
-                        </td>
-                    </tr>
+                    <tr><td colspan="{{ info_cols + (months_list|length * 4) + 4 }}" class="text-center text-muted py-3">데이터가 없습니다.</td></tr>
                     {% endfor %}
                 </tbody>
             </table>
@@ -383,19 +410,13 @@
     <div class="card-header d-flex justify-content-between align-items-center">
         <span>기간 검색 ({{ date_from }} ~ {{ date_to }})</span>
         <div class="export-buttons no-print">
-            <button class="btn btn-success btn-sm export-btn" onclick="exportTableToExcel('periodTable', 'ERP등록체크_기간_{{ date_from }}_{{ date_to }}')">
-                <i class="bi bi-file-earmark-excel"></i> Excel
-            </button>
-            <button class="btn btn-danger btn-sm export-btn" onclick="exportTableToPDF('periodTable', 'ERP등록체크_기간_{{ date_from }}_{{ date_to }}')">
-                <i class="bi bi-file-earmark-pdf"></i> PDF
-            </button>
-            <button class="btn btn-secondary btn-sm export-btn" onclick="printTable()">
-                <i class="bi bi-printer"></i> 인쇄
-            </button>
+            <button class="btn btn-success btn-sm export-btn" onclick="exportTableToExcel('periodTable', 'ERP등록체크_기간_{{ date_from }}_{{ date_to }}')"><i class="bi bi-file-earmark-excel"></i> Excel</button>
+            <button class="btn btn-danger btn-sm export-btn" onclick="exportTableToPDF('periodTable', 'ERP등록체크_기간_{{ date_from }}_{{ date_to }}')"><i class="bi bi-file-earmark-pdf"></i> PDF</button>
+            <button class="btn btn-secondary btn-sm export-btn" onclick="printTable()"><i class="bi bi-printer"></i> 인쇄</button>
         </div>
     </div>
     <div class="card-body py-2">
-        <form method="GET" action="{{ url_for('admin.erp_tracking_admin') }}" class="row g-2 align-items-center">
+        <form method="GET" action="{{ url_for('admin.erp_tracking_admin') }}" class="row g-2 align-items-end">
             <input type="hidden" name="search_type" value="period">
             <div class="col-auto">
                 <label class="form-label mb-0">기간</label>
@@ -418,15 +439,15 @@
                 <label class="form-label mb-0">품목</label>
                 <select name="category" class="form-select form-select-sm" style="width: 120px;">
                     <option value="전체" {% if selected_category == '전체' %}selected{% endif %}>전체</option>
-                    {% for cat in all_categories %}
-                    {% if cat.name != '폐유' %}
+                    {% for cat in all_categories %}{% if not cat.is_waste %}
                     <option value="{{ cat.name }}" {% if selected_category == cat.name %}selected{% endif %}>{{ cat.name }}</option>
-                    {% endif %}
-                    {% endfor %}
+                    {% endif %}{% endfor %}
                 </select>
             </div>
+            {{ view_mode_field() }}
+            {{ franchise_store_fields() }}
             <div class="col-auto">
-                <button type="submit" class="btn btn-primary btn-sm" style="margin-top: 1.5rem;">검색</button>
+                <button type="submit" class="btn btn-primary btn-sm">검색</button>
             </div>
         </form>
     </div>
@@ -435,48 +456,23 @@
             <table id="periodTable" class="table table-sm table-bordered tracking-table mb-0">
                 <thead>
                     <tr>
-                        <th rowspan="2" class="align-middle">지사</th>
-                        <th rowspan="2" class="align-middle">중상</th>
-                        <th rowspan="2" class="align-middle">프랜차이즈</th>
-                        <th rowspan="2" class="align-middle">매장명</th>
+                        {{ store_header_cols() }}
                         {% for period in periods %}
-                        <th colspan="3" class="text-center">{{ period.label }}</th>
+                        <th colspan="4" class="text-center">{{ period.label }}</th>
                         {% endfor %}
-                        <th colspan="3" class="text-center total-col">합계</th>
+                        <th colspan="4" class="text-center total-col">합계</th>
                     </tr>
-                    <tr>
-                        {% for period in periods %}
-                        <th class="text-center col-shipment">출고</th>
-                        <th class="text-center col-erp">ERP</th>
-                        <th class="text-center col-unregistered">미등록</th>
-                        {% endfor %}
-                        <th class="text-center total-col">출고</th>
-                        <th class="text-center total-col">ERP</th>
-                        <th class="text-center total-col">미등록</th>
-                    </tr>
+                    <tr>{{ period_sub_headers(periods) }}</tr>
                 </thead>
                 <tbody>
                     {% for data in period_data %}
                     <tr>
-                        <td>{{ data.branch.name if data.branch else '-' }}</td>
-                        <td>{{ data.jungsung.contact_person if data.jungsung else '-' }}</td>
-                        <td>{{ data.franchise.name if data.franchise else '-' }}</td>
-                        <td>{{ data.store.name }}</td>
-                        {% for period_item in data.periods %}
-                        <td class="text-end col-shipment">{{ period_item.shipment if period_item.shipment > 0 else '' }}</td>
-                        <td class="text-end col-erp">{{ period_item.erp if period_item.erp > 0 else '' }}</td>
-                        <td class="text-end col-unregistered">{{ period_item.unregistered if period_item.unregistered > 0 else '' }}</td>
-                        {% endfor %}
-                        <td class="text-end total-col">{{ data.totals.shipment }}</td>
-                        <td class="text-end total-col">{{ data.totals.erp }}</td>
-                        <td class="text-end total-col">{{ data.totals.unregistered }}</td>
+                        {{ store_data_cols(data) }}
+                        {% for period_item in data.periods %}{{ period_data_cells(period_item) }}{% endfor %}
+                        {{ totals_cells(data.totals) }}
                     </tr>
                     {% else %}
-                    <tr>
-                        <td colspan="{{ 4 + (periods|length * 3) + 3 }}" class="text-center text-muted py-3">
-                            데이터가 없습니다.
-                        </td>
-                    </tr>
+                    <tr><td colspan="{{ info_cols + (periods|length * 4) + 4 }}" class="text-center text-muted py-3">데이터가 없습니다.</td></tr>
                     {% endfor %}
                 </tbody>
             </table>
@@ -490,7 +486,32 @@
     <small class="text-muted">
         * 출고: 매장별 출고 수량{% if selected_category != '전체' %} ({{ selected_category }}){% endif %}<br>
         * ERP: 중상이 등록한 ERP 등록 수량{% if selected_category != '전체' %} ({{ selected_category }}){% endif %}<br>
-        * 미등록: 출고 - ERP (출고된 수량 중 ERP에 등록되지 않은 수량)
+        * 폐유: 폐유 등록 수량<br>
+        * 미등록: 출고 - ERP (출고된 수량 중 ERP에 등록되지 않은 수량) <span class="unreg-pos">+파랑 = 미등록</span> <span class="unreg-neg">-빨강 = 초과등록</span>
     </small>
 </div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const storesByFranchise = {{ stores_by_franchise_json | safe }};
+document.querySelectorAll('.franchise-filter-select').forEach(sel => {
+    sel.addEventListener('change', function() {
+        const fid = this.value;
+        const form = this.closest('form');
+        const storeSel = form.querySelector('.store-filter-select');
+        storeSel.innerHTML = '<option value="">전체</option>';
+        let stores = [];
+        if (fid) {
+            stores = storesByFranchise[fid] || [];
+        }
+        stores.forEach(s => {
+            const opt = document.createElement('option');
+            opt.value = s.id;
+            opt.textContent = s.name;
+            storeSel.appendChild(opt);
+        });
+    });
+});
+</script>
 {% endblock %}

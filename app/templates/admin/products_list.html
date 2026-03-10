@@ -92,9 +92,9 @@
                         <label class="form-label">품목 <span class="required">*</span></label>
                         <select name="category" id="modal_category" class="form-select" required>
                             <option value="">선택</option>
-                            <option value="식용유">식용유</option>
-                            <option value="밀가루">밀가루</option>
-                            <option value="폐유">폐유</option>
+                            {% for cat in categories %}
+                            <option value="{{ cat.name }}">{{ cat.name }}</option>
+                            {% endfor %}
                         </select>
                     </div>
                     <div class="mb-3">

@@ -1,11 +1,12 @@
 from flask import Blueprint, render_template, redirect, url_for
 from flask_login import login_required, current_user
 from app.utils.decorators import admin_required, branch_required, driver_required, franchise_required, jungsung_required
-from app.models import User, Branch, Franchise, Store, Product, ShipmentItem, StockIn, Jungsung, ERPRegistration
+from app.models import User, Branch, Franchise, Store, Product, ShipmentItem, StockIn, Jungsung, ERPRegistration, Category
 from app import db
 from sqlalchemy import func
 from sqlalchemy.orm import joinedload
 from datetime import date, datetime, timedelta
+from app.utils.timezone import kst_today
 
 dashboard_bp = Blueprint('dashboard', __name__)
 
@@ -38,7 +39,8 @@ def admin():
     Admin dashboard - 관리자
     Full access to all data and user management.
     """
-    today = date.today()
+    today = kst_today()
+    yesterday = today - timedelta(days=1)
     first_of_month = today.replace(day=1)
 
     # User counts
@@ -48,25 +50,29 @@ def admin():
     store_count = Store.query.filter_by(is_active=True).count()
     jungsung_count = Jungsung.query.filter_by(is_active=True).count()
 
-    # Today's stats
-    today_shipments = db.session.query(func.sum(ShipmentItem.quantity)).filter(
-        ShipmentItem.is_active == True,
-        ShipmentItem.shipment_date == today
+    # Yesterday's stats (admin: 입고=incoming, 출고=transfer)
+    yesterday_incoming = db.session.query(func.sum(StockIn.quantity)).filter(
+        StockIn.is_active == True,
+        StockIn.record_type == 'incoming',
+        StockIn.stock_date == yesterday
     ).scalar() or 0
 
-    today_stockins = db.session.query(func.sum(StockIn.quantity)).filter(
+    yesterday_transfer = db.session.query(func.sum(StockIn.quantity)).filter(
         StockIn.is_active == True,
-        StockIn.stock_date == today
+        StockIn.record_type == 'transfer',
+        StockIn.stock_date == yesterday
     ).scalar() or 0
 
     # This month's stats
-    month_shipments = db.session.query(func.sum(ShipmentItem.quantity)).filter(
-        ShipmentItem.is_active == True,
-        ShipmentItem.shipment_date >= first_of_month
+    month_incoming = db.session.query(func.sum(StockIn.quantity)).filter(
+        StockIn.is_active == True,
+        StockIn.record_type == 'incoming',
+        StockIn.stock_date >= first_of_month
     ).scalar() or 0
 
-    month_stockins = db.session.query(func.sum(StockIn.quantity)).filter(
+    month_transfer = db.session.query(func.sum(StockIn.quantity)).filter(
         StockIn.is_active == True,
+        StockIn.record_type == 'transfer',
         StockIn.stock_date >= first_of_month
     ).scalar() or 0
 
@@ -79,10 +85,10 @@ def admin():
                            franchise_count=franchise_count,
                            store_count=store_count,
                            jungsung_count=jungsung_count,
-                           today_shipments=today_shipments,
-                           today_stockins=today_stockins,
-                           month_shipments=month_shipments,
-                           month_stockins=month_stockins,
+                           yesterday_incoming=yesterday_incoming,
+                           yesterday_transfer=yesterday_transfer,
+                           month_incoming=month_incoming,
+                           month_transfer=month_transfer,
                            recent_users=recent_users)
 
 
@@ -94,7 +100,7 @@ def branch():
     Branch dashboard - 지사
     Can see only their branch-specific data.
     """
-    today = date.today()
+    today = kst_today()
     first_of_month = today.replace(day=1)
     branch_id = current_user.branch_id
 
@@ -110,17 +116,18 @@ def branch():
     franchise_ids = [f[0] for f in franchise_ids]
     franchise_count = len(franchise_ids)
 
-    # Today's stats
-    today_shipments = db.session.query(func.sum(ShipmentItem.quantity)).filter(
+    # Yesterday's stats
+    yesterday = today - timedelta(days=1)
+    yesterday_shipments = db.session.query(func.sum(ShipmentItem.quantity)).filter(
         ShipmentItem.is_active == True,
         ShipmentItem.branch_id == branch_id,
-        ShipmentItem.shipment_date == today
+        ShipmentItem.shipment_date == yesterday
     ).scalar() or 0
 
-    today_stockins = db.session.query(func.sum(StockIn.quantity)).filter(
+    yesterday_stockins = db.session.query(func.sum(StockIn.quantity)).filter(
         StockIn.is_active == True,
         StockIn.branch_id == branch_id,
-        StockIn.stock_date == today
+        StockIn.stock_date == yesterday
     ).scalar() or 0
 
     # This month's stats
@@ -186,8 +193,8 @@ def branch():
     return render_template('dashboard/branch.html',
                            store_count=store_count,
                            jungsung_count=jungsung_count,
-                           today_shipments=today_shipments,
-                           today_stockins=today_stockins,
+                           yesterday_shipments=yesterday_shipments,
+                           yesterday_stockins=yesterday_stockins,
                            month_shipments=month_shipments,
                            month_stockins=month_stockins,
                            inventory_by_category=inventory_by_category,
@@ -255,38 +262,62 @@ def jungsung():
     Jungsung dashboard - 중상
     Can register ERP data for their assigned stores.
     """
-    today = date.today()
+    today = kst_today()
     first_of_month = today.replace(day=1)
     jungsung_id = current_user.jungsung_id
 
     # Assigned stores count
     store_count = Store.query.filter_by(jungsung_id=jungsung_id, is_active=True).count()
 
-    # Today's ERP registrations
-    today_registrations = ERPRegistration.query.filter(
-        ERPRegistration.jungsung_id == jungsung_id,
-        ERPRegistration.registration_date == today
-    ).count()
+    # Get waste category names from DB
+    waste_category_names = [c.name for c in Category.query.filter_by(is_waste=True, is_active=True).all()]
 
-    # This month's ERP registrations
-    month_registrations = ERPRegistration.query.filter(
-        ERPRegistration.jungsung_id == jungsung_id,
-        ERPRegistration.registration_date >= first_of_month
-    ).count()
-
-    # Today's totals from category_quantities JSON
+    # Today's ERP registrations (all quantities)
     today_regs = ERPRegistration.query.filter(
         ERPRegistration.jungsung_id == jungsung_id,
         ERPRegistration.registration_date == today,
         ERPRegistration.is_return == False
     ).all()
-    today_stockin_qty = sum(
-        sum(v for k, v in reg.get_category_quantities().items() if k != '폐유')
+    today_erp_total = sum(
+        sum(v for k, v in reg.get_category_quantities().items() if k not in waste_category_names)
         for reg in today_regs
     )
     today_waste_qty = sum(
-        reg.get_category_quantities().get('폐유', 0)
+        sum(v for k, v in reg.get_category_quantities().items() if k in waste_category_names)
         for reg in today_regs
+    )
+
+    # Yesterday's 입고량 (전일 입고량) - per store breakdown
+    yesterday = today - timedelta(days=1)
+    yesterday_regs = ERPRegistration.query.filter(
+        ERPRegistration.jungsung_id == jungsung_id,
+        ERPRegistration.registration_date == yesterday,
+        ERPRegistration.is_return == False
+    ).options(joinedload(ERPRegistration.store)).all()
+
+    yesterday_stockin_qty = 0
+    yesterday_stockin_detail = []
+    store_stockin_map = {}
+    for reg in yesterday_regs:
+        qty_dict = reg.get_category_quantities()
+        stockin = sum(v for k, v in qty_dict.items() if k not in waste_category_names)
+        if stockin > 0:
+            yesterday_stockin_qty += stockin
+            sid = reg.store_id
+            if sid not in store_stockin_map:
+                store_stockin_map[sid] = {'store_name': reg.store.name if reg.store else '-', 'qty': 0}
+            store_stockin_map[sid]['qty'] += stockin
+    yesterday_stockin_detail = sorted(store_stockin_map.values(), key=lambda x: x['store_name'])
+
+    # This month's ERP registrations
+    month_regs = ERPRegistration.query.filter(
+        ERPRegistration.jungsung_id == jungsung_id,
+        ERPRegistration.registration_date >= first_of_month,
+        ERPRegistration.is_return == False
+    ).all()
+    month_erp_total = sum(
+        sum(v for k, v in reg.get_category_quantities().items() if k not in waste_category_names)
+        for reg in month_regs
     )
 
     # Recent registrations
@@ -299,9 +330,12 @@ def jungsung():
 
     return render_template('dashboard/jungsung.html',
                            store_count=store_count,
-                           today_registrations=today_registrations,
-                           month_registrations=month_registrations,
-                           today_stockin_qty=today_stockin_qty,
+                           today_erp_total=today_erp_total,
+                           month_erp_total=month_erp_total,
+                           yesterday=yesterday,
+                           yesterday_stockin_qty=yesterday_stockin_qty,
+                           yesterday_stockin_detail=yesterday_stockin_detail,
                            today_waste_qty=today_waste_qty,
                            recent_registrations=recent_registrations,
-                           assigned_stores=assigned_stores)
+                           assigned_stores=assigned_stores,
+                           waste_category_names=waste_category_names)

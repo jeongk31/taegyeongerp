@@ -15,7 +15,9 @@
       "Bash(git commit:*)",
       "Bash(git push:*)",
       "Bash(ls:*)",
-      "Bash(/Users/thet/anaconda3/bin/pip install:*)"
+      "Bash(/Users/thet/anaconda3/bin/pip install:*)",
+      "Bash(git config user.email \"jkl499@nyu.edu\")",
+      "Bash(git config user.name \"jkl499\")"
     ]
   }
 }

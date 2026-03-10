@@ -35,6 +35,7 @@ class Category(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(50), unique=True, nullable=False)  # 품목명
+    is_waste = db.Column(db.Boolean, default=False)  # 폐유 등 폐기물 품목
     is_active = db.Column(db.Boolean, default=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
@@ -310,15 +311,19 @@ class ShipmentItem(db.Model):
 
 
 class StockIn(db.Model):
-    """입고 (Inbound stock)"""
+    """입고/출고 (Stock movement)"""
     __tablename__ = 'stock_ins'
 
     id = db.Column(db.Integer, primary_key=True)
-    stock_date = db.Column(db.Date, nullable=False)  # 입고일
+    stock_date = db.Column(db.Date, nullable=False)  # 날짜
+
+    # record_type: 'incoming' = 입고(입고사→본사), 'transfer' = 출고(본사→지사)
+    record_type = db.Column(db.String(20), nullable=False, default='incoming')
+
     supplier_id = db.Column(db.Integer, db.ForeignKey('suppliers.id'), nullable=True)  # 입고업체
     product_id = db.Column(db.Integer, db.ForeignKey('products.id'), nullable=False)  # 제품
 
-    # 지사 (어느 지사에 입고되는지)
+    # 지사 (출고 대상 지사)
     branch_id = db.Column(db.Integer, db.ForeignKey('branches.id'), nullable=True)
 
     quantity = db.Column(db.Integer, nullable=False)  # 수량
@@ -326,7 +331,7 @@ class StockIn(db.Model):
     total_price = db.Column(db.Integer, nullable=False)  # 합계
     memo = db.Column(db.Text, nullable=True)  # 메모
 
-    # 입고 담당자 (누가 입고했는지 기록)
+    # 담당자 (누가 등록했는지 기록)
     created_by = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
 
     is_active = db.Column(db.Boolean, default=True)
@@ -393,8 +398,10 @@ class Payment(db.Model):
     __tablename__ = 'payments'
 
     id = db.Column(db.Integer, primary_key=True)
+    payment_type = db.Column(db.String(20), nullable=False, default='hq_branch')  # 'hq_branch' or 'branch_jungsung'
     payment_date = db.Column(db.Date, nullable=False)  # 입금일
     branch_id = db.Column(db.Integer, db.ForeignKey('branches.id'), nullable=False)  # 지사
+    jungsung_id = db.Column(db.Integer, db.ForeignKey('jungsungs.id'), nullable=True)  # 중상 (for branch_jungsung type)
     franchise_id = db.Column(db.Integer, db.ForeignKey('franchises.id'), nullable=True)  # 프렌차이즈
     product_id = db.Column(db.Integer, db.ForeignKey('products.id'), nullable=True)  # 품목
 
@@ -408,6 +415,7 @@ class Payment(db.Model):
 
     # Relationships
     branch = db.relationship('Branch', backref='payments', lazy=True)
+    jungsung = db.relationship('Jungsung', backref='payments', lazy=True)
     franchise = db.relationship('Franchise', backref='payments', lazy=True)
     product = db.relationship('Product', backref='payments', lazy=True)
     creator = db.relationship('User', backref='payments', lazy=True)

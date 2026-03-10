@@ -64,9 +64,11 @@
                     <li class="nav-item dropdown">
                         <a class="nav-link dropdown-toggle" href="#" data-bs-toggle="dropdown">재고현황</a>
                         <ul class="dropdown-menu">
-                            <li><a class="dropdown-item" href="{{ url_for('admin.inventory_status') }}">재고현황</a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('admin.hq_inventory') }}">본사 재고현황</a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('admin.branch_inventory') }}">지사 재고현황</a></li>
                             <li><hr class="dropdown-divider"></li>
-                            <li><a class="dropdown-item" href="{{ url_for('admin.receivables') }}">미수금 관리</a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('admin.receivables_hq') }}">본사-지사 미수금</a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('admin.receivables_branch') }}">지사-중상 미수금</a></li>
                         </ul>
                     </li>
                     <li class="nav-item dropdown">
@@ -99,10 +101,11 @@
                     <li class="nav-item dropdown">
                         <a class="nav-link dropdown-toggle" href="#" data-bs-toggle="dropdown">재고현황</a>
                         <ul class="dropdown-menu">
-                            <li><a class="dropdown-item" href="{{ url_for('admin.inventory_status') }}">재고현황</a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('admin.branch_inventory') }}">지사 재고현황</a></li>
                             <li><a class="dropdown-item" href="{{ url_for('admin.daily_shipments') }}">날짜별 출고 검색</a></li>
                             <li><hr class="dropdown-divider"></li>
-                            <li><a class="dropdown-item" href="{{ url_for('admin.receivables') }}">미수금 관리</a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('admin.receivables_hq') }}">본사-지사 미수금</a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('admin.receivables_branch') }}">지사-중상 미수금</a></li>
                         </ul>
                     </li>
                     <li class="nav-item dropdown">
@@ -161,6 +164,9 @@
                     </li>
                     <li class="nav-item">
                         <a class="nav-link" href="{{ url_for('admin.store_status_list') }}">매장상태관리</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ url_for('admin.receivables_branch') }}">미수금</a>
                     </li>
                     {% endif %}
                 </ul>

@@ -3,11 +3,25 @@ from flask_login import login_required, current_user
 from app import db
 from app.models.user import User, Branch, Franchise, Store, Jungsung, Supplier, Product, Shipment, ShipmentItem, StockIn, ERPRegistration, Payment, UserRole, Category
 from app.utils.decorators import admin_required, branch_required, jungsung_required, franchise_required
+from app.utils.timezone import kst_today, kst_now
 from datetime import datetime, date, timedelta
 from sqlalchemy import func, extract, or_, and_
 from sqlalchemy.orm import joinedload
+import json
 
 admin_bp = Blueprint('admin', __name__, url_prefix='/admin')
+
+
+def get_waste_category_names():
+    """Get waste category names from DB (e.g. 폐유). Never hardcode."""
+    waste_cats = Category.query.filter_by(is_waste=True, is_active=True).all()
+    return [c.name for c in waste_cats]
+
+
+def get_non_waste_category_names():
+    """Get all non-waste active category names from DB."""
+    cats = Category.query.filter(Category.is_active == True, Category.is_waste == False).all()
+    return [c.name for c in cats]
 
 
 def build_month_weeks(year, month):
@@ -1147,7 +1161,8 @@ def products_list():
         franchises = Franchise.query.filter_by(is_active=True).order_by(Franchise.name).all()
 
     products = query.order_by(order_col).all()
-    return render_template('admin/products_list.html', products=products, franchises=franchises, sort=sort, order=order)
+    categories = Category.query.filter_by(is_active=True).order_by(Category.name).all()
+    return render_template('admin/products_list.html', products=products, franchises=franchises, categories=categories, sort=sort, order=order)
 
 
 @admin_bp.route('/products/add', methods=['POST'])
@@ -1273,8 +1288,8 @@ def shipments_list():
     date_to_parsed = datetime.strptime(date_to, '%Y-%m-%d').date() if date_to else None
 
     if current_user.is_admin():
-        # Admin 출고 = StockIn records with branch_id (admin shipped to branches)
-        query = StockIn.query.filter(StockIn.is_active == True, StockIn.branch_id != None)
+        # Admin 출고 = StockIn records with record_type='transfer' (admin shipped to branches)
+        query = StockIn.query.filter(StockIn.is_active == True, StockIn.record_type == 'transfer')
         if branch_id:
             query = query.filter(StockIn.branch_id == branch_id)
         if category or franchise_id:
@@ -1294,7 +1309,7 @@ def shipments_list():
         ).order_by(StockIn.stock_date.desc(), StockIn.id.desc()).all()
 
         # Stats use StockIn for admin
-        today = date.today()
+        today = kst_today()
         first_of_month = today.replace(day=1)
         first_of_prev_month = (first_of_month - timedelta(days=1)).replace(day=1)
 
@@ -1310,7 +1325,7 @@ def shipments_list():
             base_filter = [
                 StockIn.product_id == product.id,
                 StockIn.is_active == True,
-                StockIn.branch_id != None
+                StockIn.record_type == 'transfer'
             ]
             if branch_id:
                 base_filter.append(StockIn.branch_id == branch_id)
@@ -1353,7 +1368,7 @@ def shipments_list():
         ).order_by(ShipmentItem.shipment_date.desc(), ShipmentItem.id.desc()).all()
 
         # Stats use ShipmentItem for branch
-        today = date.today()
+        today = kst_today()
         first_of_month = today.replace(day=1)
         first_of_prev_month = (first_of_month - timedelta(days=1)).replace(day=1)
 
@@ -1500,7 +1515,7 @@ def shipments_create():
                            categories=categories,
                            franchises=all_franchises,
                            franchise_category_data=franchise_category_data,
-                           today=date.today().strftime('%Y-%m-%d'))
+                           today=kst_today().strftime('%Y-%m-%d'))
 
 
 @admin_bp.route('/shipments/submit', methods=['POST'])
@@ -1532,7 +1547,7 @@ def shipments_submit():
         if not product_ids[i] or not quantities[i] or not unit_prices[i]:
             continue
 
-        item_date = datetime.strptime(shipment_dates[i], '%Y-%m-%d').date() if i < len(shipment_dates) and shipment_dates[i] else date.today()
+        item_date = datetime.strptime(shipment_dates[i], '%Y-%m-%d').date() if i < len(shipment_dates) and shipment_dates[i] else kst_today()
         qty = int(quantities[i])
         price = int(unit_prices[i])
         item_total = qty * price
@@ -1562,7 +1577,7 @@ def shipments_submit():
         else:
             # Regular shipment (지사 출고)
             if not shipment:
-                first_date = datetime.strptime(shipment_dates[0], '%Y-%m-%d').date() if shipment_dates else date.today()
+                first_date = datetime.strptime(shipment_dates[0], '%Y-%m-%d').date() if shipment_dates else kst_today()
                 shipment = Shipment(
                     shipment_date=first_date,
                     memo=memo
@@ -1742,14 +1757,14 @@ def stockins_list():
     # Base query
     query = StockIn.query.filter_by(is_active=True)
 
-    # Admin sees only admin-level 입고 (branch_id IS NULL), branch users see their own
+    # Admin sees only incoming stock (record_type='incoming'), branch users see transfers to their branch
     if current_user.is_admin():
         if branch_id:
             query = query.filter(StockIn.branch_id == branch_id)
         else:
-            query = query.filter(StockIn.branch_id == None)
+            query = query.filter(StockIn.record_type == 'incoming')
     elif current_user.is_branch() and current_user.branch_id:
-        query = query.filter(StockIn.branch_id == current_user.branch_id)
+        query = query.filter(StockIn.record_type == 'transfer', StockIn.branch_id == current_user.branch_id)
 
     # Apply filters (join Product once if needed)
     if category or franchise_id:
@@ -1867,7 +1882,7 @@ def stockins_create():
                            suppliers=suppliers,
                            branches=branches,
                            categories=categories,
-                           today=date.today().isoformat())
+                           today=kst_today().isoformat())
 
 
 @admin_bp.route('/stockins/submit', methods=['POST'])
@@ -1892,10 +1907,13 @@ def stockins_submit():
             # Admin 입고 has no branch; branch users use their own branch
             if current_user.is_admin():
                 branch_id = None
+                record_type = 'incoming'
             elif branch_ids and branch_ids[i]:
                 branch_id = int(branch_ids[i])
+                record_type = 'transfer'
             else:
                 branch_id = current_user.branch_id
+                record_type = 'transfer'
             supplier_id = int(supplier_ids[i]) if supplier_ids[i] else None
             product_id = int(product_ids[i])
             qty = int(quantities[i])
@@ -1903,6 +1921,7 @@ def stockins_submit():
 
             stockin = StockIn(
                 stock_date=stock_date,
+                record_type=record_type,
                 branch_id=branch_id,
                 supplier_id=supplier_id,
                 product_id=product_id,
@@ -1950,13 +1969,19 @@ def stockins_add():
     # Admin 입고 has no branch; branch users use their own branch
     if current_user.is_admin():
         branch_id = None
+        record_type = 'incoming'
     elif current_user.is_branch() and current_user.branch_id:
         branch_id = current_user.branch_id
+        record_type = 'transfer'
     elif branch_id:
         branch_id = int(branch_id)
+        record_type = 'transfer'
+    else:
+        record_type = 'incoming'
 
     stockin = StockIn(
         stock_date=stock_date,
+        record_type=record_type,
         branch_id=branch_id,
         supplier_id=int(supplier_id) if supplier_id else None,
         product_id=int(product_id),
@@ -1964,7 +1989,7 @@ def stockins_add():
         unit_price=price,
         total_price=qty * price,
         memo=memo,
-        created_by=current_user.id  # Track who created this stock-in
+        created_by=current_user.id
     )
     db.session.add(stockin)
     db.session.commit()
@@ -2052,83 +2077,117 @@ def stockins_delete():
 
 
 # ============================================
-# 재고현황 (Inventory Status) - Admin + Branch users
+# Helper: parse inventory period parameters
+# ============================================
+def _parse_inventory_period(args):
+    """Parse common period parameters for inventory pages"""
+    from calendar import monthrange
+    today = kst_today()
+    current_year = today.year
+    current_month = today.month
+
+    period_type = args.get('period_type', 'month')
+    year = args.get('year', type=int) or current_year
+    month = args.get('month', type=int) or current_month
+    date_from = args.get('date_from')
+    date_to = args.get('date_to')
+
+    if period_type == 'range' and date_from and date_to:
+        date_from_parsed = datetime.strptime(date_from, '%Y-%m-%d').date()
+        date_to_parsed = datetime.strptime(date_to, '%Y-%m-%d').date()
+    else:
+        period_type = 'month'
+        _, last_day = monthrange(year, month)
+        date_from_parsed = date(year, month, 1)
+        date_to_parsed = date(year, month, last_day)
+
+    return {
+        'period_type': period_type, 'year': year, 'month': month,
+        'date_from': date_from, 'date_to': date_to,
+        'date_from_parsed': date_from_parsed, 'date_to_parsed': date_to_parsed,
+        'current_year': current_year
+    }
+
+
+def _get_valid_product_ids():
+    """Get product IDs whose category matches their franchise's franchise_categories"""
+    all_franchises_for_map = Franchise.query.filter_by(is_active=True).all()
+    franchise_cat_map = {}
+    for f in all_franchises_for_map:
+        franchise_cat_map[f.id] = [c.name for c in f.categories] if f.categories else []
+
+    all_valid_products = Product.query.filter_by(is_active=True).all()
+    return [p.id for p in all_valid_products if (
+        not p.franchise_id or
+        not franchise_cat_map.get(p.franchise_id) or
+        p.category in franchise_cat_map.get(p.franchise_id, [])
+    )]
+
+
+def _get_cat_franchise_map():
+    """Build category→franchises map and all_category_names for cascading filter"""
+    franchises = Franchise.query.filter_by(is_active=True).order_by(Franchise.name).all()
+    cat_franchise_map = {}
+    all_category_names = set()
+    for f in franchises:
+        for c in f.categories:
+            all_category_names.add(c.name)
+            if c.name not in cat_franchise_map:
+                cat_franchise_map[c.name] = []
+            cat_franchise_map[c.name].append({'id': f.id, 'name': f.name})
+    return cat_franchise_map, sorted(all_category_names), franchises
+
+
+# ============================================
+# 본사 재고현황 (HQ Inventory Status) - Admin only
 # ============================================
 
 @admin_bp.route('/inventory')
 @login_required
 @branch_required
 def inventory_status():
-    """Comprehensive inventory status dashboard"""
-    from calendar import monthrange
+    """Redirect to appropriate inventory page"""
+    if current_user.is_admin():
+        return redirect(url_for('admin.hq_inventory', **request.args))
+    else:
+        return redirect(url_for('admin.branch_inventory', **request.args))
 
-    today = date.today()
-    current_year = today.year
-    current_month = today.month
 
-    # Get period type (month or range)
-    period_type = request.args.get('period_type', 'month')
+@admin_bp.route('/inventory/hq')
+@login_required
+@admin_required
+def hq_inventory():
+    """본사 재고현황 - HQ Inventory Status (Admin only)"""
+    period = _parse_inventory_period(request.args)
+    date_from_parsed = period['date_from_parsed']
+    date_to_parsed = period['date_to_parsed']
+    valid_product_ids = _get_valid_product_ids()
 
-    # Get filter parameters - 기본값을 현재 달로 설정
-    year = request.args.get('year', type=int) or current_year
-    month = request.args.get('month', type=int) or current_month
-    date_from = request.args.get('date_from')
-    date_to = request.args.get('date_to')
-
-    # Franchise filter
+    # Filters
     franchise_id = request.args.get('franchise_id', type=int)
     franchise_category = request.args.get('franchise_category')
-
-    # Supplier filter
     supplier_id = request.args.get('supplier_id', type=int)
     supplier_category = request.args.get('supplier_category')
     supplier_franchise_id = request.args.get('supplier_franchise_id', type=int)
 
-    # Branch filter (admin only)
-    branch_id = request.args.get('branch_id', type=int)
-    branch_franchise_id = request.args.get('branch_franchise_id', type=int)
-    branch_category = request.args.get('branch_category')
-
-    # Jungsung filter
-    jungsung_id = request.args.get('jungsung_id', type=int)
-    jungsung_franchise_id = request.args.get('jungsung_franchise_id', type=int)
-    jungsung_category = request.args.get('jungsung_category')
-
-    # Parse date range based on period type
-    if period_type == 'range' and date_from and date_to:
-        date_from_parsed = datetime.strptime(date_from, '%Y-%m-%d').date()
-        date_to_parsed = datetime.strptime(date_to, '%Y-%m-%d').date()
-        period_display = f"{date_from} ~ {date_to}"
-    else:
-        # 월별 선택 (기본값)
-        period_type = 'month'
-        _, last_day = monthrange(year, month)
-        date_from_parsed = date(year, month, 1)
-        date_to_parsed = date(year, month, last_day)
-        period_display = f"{year}년 {month}월"
-
     # ========================================
-    # 전체 재고 요약 (Total Stats for selected period)
+    # 본사 전체 재고 요약: 입고(incoming) / 출고(transfer) / 재고
     # ========================================
-    # 총 입고수량
-    total_stockin_query = db.session.query(func.sum(StockIn.quantity)).filter(
+    total_stockin = db.session.query(func.sum(StockIn.quantity)).filter(
         StockIn.is_active == True,
+        StockIn.product_id.in_(valid_product_ids) if valid_product_ids else False,
+        StockIn.record_type == 'incoming',
         StockIn.stock_date >= date_from_parsed,
         StockIn.stock_date <= date_to_parsed
-    )
-    if not current_user.is_admin() and current_user.branch_id:
-        total_stockin_query = total_stockin_query.filter(StockIn.branch_id == current_user.branch_id)
-    total_stockin = total_stockin_query.scalar() or 0
+    ).scalar() or 0
 
-    # 총 출고수량
-    total_shipment_query = db.session.query(func.sum(ShipmentItem.quantity)).filter(
-        ShipmentItem.is_active == True,
-        ShipmentItem.shipment_date >= date_from_parsed,
-        ShipmentItem.shipment_date <= date_to_parsed
-    )
-    if not current_user.is_admin():
-        total_shipment_query = total_shipment_query.filter(ShipmentItem.branch_id == current_user.branch_id)
-    total_shipment = total_shipment_query.scalar() or 0
+    total_shipment = db.session.query(func.sum(StockIn.quantity)).filter(
+        StockIn.is_active == True,
+        StockIn.product_id.in_(valid_product_ids) if valid_product_ids else False,
+        StockIn.record_type == 'transfer',
+        StockIn.stock_date >= date_from_parsed,
+        StockIn.stock_date <= date_to_parsed
+    ).scalar() or 0
 
     total_stats = {
         'stockin': total_stockin,
@@ -2137,309 +2196,343 @@ def inventory_status():
     }
 
     # ========================================
-    # 2. 프랜차이즈별검색 (Franchise Search)
+    # 프랜차이즈별검색 (Franchise Search) - HQ perspective
     # ========================================
-    franchise_stats = []
     franchise_groups = []
     if franchise_id:
-        # Get stores for this franchise
-        stores = Store.query.filter_by(franchise_id=franchise_id, is_active=True).all()
-        store_ids = [s.id for s in stores]
-
-        # Get products to show (filter by franchise and optionally category)
-        products_query = Product.query.filter_by(is_active=True, franchise_id=franchise_id)
-        if franchise_category:
-            products_query = products_query.filter_by(category=franchise_category)
-        products_to_show = products_query.all()
-
-        # Group products by franchise (should be only one franchise, but keep structure consistent)
         franchise_obj = Franchise.query.get(franchise_id)
+        franchise_cat_names = [c.name for c in franchise_obj.categories] if franchise_obj else []
+        if franchise_category:
+            franchise_cat_names = [c for c in franchise_cat_names if c == franchise_category]
+
         product_stats = []
+        for cat_name in sorted(franchise_cat_names):
+            product_ids = [p.id for p in Product.query.filter_by(
+                is_active=True, franchise_id=franchise_id, category=cat_name
+            ).all()]
 
-        for product in products_to_show:
-            if not product:
-                continue
+            stockin_qty = 0
+            shipment_qty = 0
+            if product_ids:
+                stockin_qty = db.session.query(func.sum(StockIn.quantity)).filter(
+                    StockIn.is_active == True, StockIn.product_id.in_(product_ids),
+                    StockIn.record_type == 'incoming',
+                    StockIn.stock_date >= date_from_parsed, StockIn.stock_date <= date_to_parsed
+                ).scalar() or 0
 
-            # 입고수량 - total stock in for this product
-            stockin_query = db.session.query(func.sum(StockIn.quantity)).filter(
-                StockIn.is_active == True,
-                StockIn.product_id == product.id
-            )
-            if date_from_parsed:
-                stockin_query = stockin_query.filter(StockIn.stock_date >= date_from_parsed)
-            if date_to_parsed:
-                stockin_query = stockin_query.filter(StockIn.stock_date <= date_to_parsed)
-            stockin_qty = stockin_query.scalar() or 0
-
-            # 출고수량 - shipments to this franchise's stores OR shipments with this product (franchise match)
-            shipment_query = db.session.query(func.sum(ShipmentItem.quantity)).filter(
-                ShipmentItem.is_active == True,
-                ShipmentItem.product_id == product.id
-            )
-            # Include shipments where store_id is in franchise stores OR store_id is NULL (jungsung/branch level shipments)
-            if store_ids:
-                shipment_query = shipment_query.filter(
-                    or_(
-                        ShipmentItem.store_id.in_(store_ids),
-                        ShipmentItem.store_id == None
-                    )
-                )
-            if date_from_parsed:
-                shipment_query = shipment_query.filter(ShipmentItem.shipment_date >= date_from_parsed)
-            if date_to_parsed:
-                shipment_query = shipment_query.filter(ShipmentItem.shipment_date <= date_to_parsed)
-            if not current_user.is_admin():
-                shipment_query = shipment_query.filter(ShipmentItem.branch_id == current_user.branch_id)
-            shipment_qty = shipment_query.scalar() or 0
+                shipment_qty = db.session.query(func.sum(StockIn.quantity)).filter(
+                    StockIn.is_active == True, StockIn.product_id.in_(product_ids),
+                    StockIn.record_type == 'transfer',
+                    StockIn.stock_date >= date_from_parsed, StockIn.stock_date <= date_to_parsed
+                ).scalar() or 0
 
             product_stats.append({
-                'product': product,
+                'category': cat_name,
                 'stockin': stockin_qty,
                 'shipment': shipment_qty,
                 'stock': stockin_qty - shipment_qty
             })
 
-        # Create franchise group with products
         if product_stats:
-            franchise_groups.append({
-                'franchise': franchise_obj,
-                'products': product_stats
-            })
-
-        # Keep the old format for backward compatibility (will be removed once template is updated)
-        for pstat in product_stats:
-            franchise_stats.append({
-                'franchise': franchise_obj,
-                'product': pstat['product'],
-                'stockin': pstat['stockin'],
-                'shipment': pstat['shipment'],
-                'stock': pstat['stock']
-            })
+            franchise_groups.append({'franchise': franchise_obj, 'products': product_stats})
 
     # ========================================
-    # 3. 입고사 월별검색 (Supplier Monthly Search)
+    # 입고사 검색 (Supplier Search) - HQ perspective
     # ========================================
     supplier_stats = []
     if supplier_id:
-        # Build product query based on category and/or franchise
-        products_query = Product.query.filter_by(is_active=True)
-        if supplier_category:
-            products_query = products_query.filter_by(category=supplier_category)
+        supplier_obj = Supplier.query.get(supplier_id)
         if supplier_franchise_id:
-            products_query = products_query.filter_by(franchise_id=supplier_franchise_id)
-        products_to_show = products_query.all()
+            target_franchises = [Franchise.query.get(supplier_franchise_id)]
+        else:
+            target_franchises = Franchise.query.filter_by(is_active=True).order_by(Franchise.name).all()
 
-        for product in products_to_show:
-            if not product:
+        for franchise in target_franchises:
+            if not franchise:
                 continue
+            cat_names = [c.name for c in franchise.categories] if franchise.categories else []
+            if supplier_category:
+                cat_names = [c for c in cat_names if c == supplier_category]
 
-            # 입고수량 from this supplier
-            stockin_query = db.session.query(func.sum(StockIn.quantity)).filter(
-                StockIn.is_active == True,
-                StockIn.supplier_id == supplier_id,
-                StockIn.product_id == product.id
-            )
-            if date_from_parsed:
-                stockin_query = stockin_query.filter(StockIn.stock_date >= date_from_parsed)
-            if date_to_parsed:
-                stockin_query = stockin_query.filter(StockIn.stock_date <= date_to_parsed)
-            stockin_qty = stockin_query.scalar() or 0
+            for cat_name in sorted(cat_names):
+                product_ids = [p.id for p in Product.query.filter_by(
+                    is_active=True, franchise_id=franchise.id, category=cat_name
+                ).all()]
 
-            # 출고수량 for this product
-            shipment_query = db.session.query(func.sum(ShipmentItem.quantity)).filter(
-                ShipmentItem.is_active == True,
-                ShipmentItem.product_id == product.id
-            )
-            if date_from_parsed:
-                shipment_query = shipment_query.filter(ShipmentItem.shipment_date >= date_from_parsed)
-            if date_to_parsed:
-                shipment_query = shipment_query.filter(ShipmentItem.shipment_date <= date_to_parsed)
-            if not current_user.is_admin():
-                shipment_query = shipment_query.filter(ShipmentItem.branch_id == current_user.branch_id)
-            shipment_qty = shipment_query.scalar() or 0
+                stockin_qty = 0
+                shipment_qty = 0
+                if product_ids:
+                    stockin_qty = db.session.query(func.sum(StockIn.quantity)).filter(
+                        StockIn.is_active == True, StockIn.supplier_id == supplier_id,
+                        StockIn.product_id.in_(product_ids), StockIn.record_type == 'incoming',
+                        StockIn.stock_date >= date_from_parsed, StockIn.stock_date <= date_to_parsed
+                    ).scalar() or 0
 
-            if stockin_qty > 0 or shipment_qty > 0:
+                    shipment_qty = db.session.query(func.sum(StockIn.quantity)).filter(
+                        StockIn.is_active == True, StockIn.product_id.in_(product_ids),
+                        StockIn.record_type == 'transfer',
+                        StockIn.stock_date >= date_from_parsed, StockIn.stock_date <= date_to_parsed
+                    ).scalar() or 0
+
                 supplier_stats.append({
-                    'supplier': Supplier.query.get(supplier_id),
-                    'franchise': product.franchise,
-                    'product': product,
+                    'supplier': supplier_obj,
+                    'franchise': franchise,
+                    'category': cat_name,
                     'stockin': stockin_qty,
                     'shipment': shipment_qty,
                     'stock': stockin_qty - shipment_qty
                 })
 
+    # Get data for filter dropdowns
+    cat_franchise_map, all_category_names, franchises = _get_cat_franchise_map()
+    suppliers = Supplier.query.filter_by(is_active=True).order_by(Supplier.company_name).all()
+
+    return render_template('admin/hq_inventory.html',
+                           year=period['year'], month=period['month'],
+                           current_year=period['current_year'],
+                           period_type=period['period_type'],
+                           total_stats=total_stats,
+                           franchise_groups=franchise_groups,
+                           supplier_stats=supplier_stats,
+                           franchises=franchises,
+                           suppliers=suppliers,
+                           cat_franchise_map_json=json.dumps(cat_franchise_map),
+                           all_category_names=all_category_names,
+                           filters={
+                               'date_from': period['date_from'],
+                               'date_to': period['date_to'],
+                               'franchise_id': franchise_id,
+                               'franchise_category': franchise_category,
+                               'supplier_id': supplier_id,
+                               'supplier_category': supplier_category,
+                               'supplier_franchise_id': supplier_franchise_id,
+                           })
+
+
+# ============================================
+# 지사 재고현황 (Branch Inventory Status) - Admin + Branch users
+# ============================================
+
+@admin_bp.route('/inventory/branch')
+@login_required
+@branch_required
+def branch_inventory():
+    """지사 재고현황 - Branch Inventory Status (Admin + Branch users)"""
+    period = _parse_inventory_period(request.args)
+    date_from_parsed = period['date_from_parsed']
+    date_to_parsed = period['date_to_parsed']
+    valid_product_ids = _get_valid_product_ids()
+
+    # Determine which branch to view
+    if current_user.is_admin():
+        view_branch_id = request.args.get('view_branch_id', type=int)
+    else:
+        view_branch_id = current_user.branch_id
+
+    # Filters
+    franchise_id = request.args.get('franchise_id', type=int)
+    franchise_category = request.args.get('franchise_category')
+    cat_search = request.args.get('cat_search')
+    cat_search_franchise_id = request.args.get('cat_search_franchise_id', type=int)
+    jungsung_id = request.args.get('jungsung_id', type=int)
+    jungsung_franchise_id = request.args.get('jungsung_franchise_id', type=int)
+    jungsung_category = request.args.get('jungsung_category')
+
     # ========================================
-    # 4. 지사별검색 (Branch Search) - Admin only
+    # 지사 전체 재고 요약: 입고(transfer to branch) / 출고(shipment) / 재고
     # ========================================
-    branch_stats = []
-    if current_user.is_admin() and branch_id:
-        # Filter by franchise if specified
-        if branch_franchise_id:
-            stores = Store.query.filter_by(branch_id=branch_id, franchise_id=branch_franchise_id, is_active=True).all()
+    total_stats = {'stockin': 0, 'shipment': 0, 'stock': 0}
+    if view_branch_id:
+        total_stockin = db.session.query(func.sum(StockIn.quantity)).filter(
+            StockIn.is_active == True,
+            StockIn.product_id.in_(valid_product_ids) if valid_product_ids else False,
+            StockIn.record_type == 'transfer',
+            StockIn.branch_id == view_branch_id,
+            StockIn.stock_date >= date_from_parsed,
+            StockIn.stock_date <= date_to_parsed
+        ).scalar() or 0
+
+        total_shipment = db.session.query(func.sum(ShipmentItem.quantity)).filter(
+            ShipmentItem.is_active == True,
+            ShipmentItem.product_id.in_(valid_product_ids) if valid_product_ids else False,
+            ShipmentItem.branch_id == view_branch_id,
+            ShipmentItem.shipment_date >= date_from_parsed,
+            ShipmentItem.shipment_date <= date_to_parsed
+        ).scalar() or 0
+
+        total_stats = {
+            'stockin': total_stockin,
+            'shipment': total_shipment,
+            'stock': total_stockin - total_shipment
+        }
+
+    # ========================================
+    # 프랜차이즈별검색 (Franchise Search) - Branch perspective
+    # ========================================
+    franchise_groups = []
+    if franchise_id and view_branch_id:
+        franchise_obj = Franchise.query.get(franchise_id)
+        franchise_cat_names = [c.name for c in franchise_obj.categories] if franchise_obj else []
+        if franchise_category:
+            franchise_cat_names = [c for c in franchise_cat_names if c == franchise_category]
+
+        product_stats = []
+        for cat_name in sorted(franchise_cat_names):
+            product_ids = [p.id for p in Product.query.filter_by(
+                is_active=True, franchise_id=franchise_id, category=cat_name
+            ).all()]
+
+            stockin_qty = 0
+            shipment_qty = 0
+            if product_ids:
+                stockin_qty = db.session.query(func.sum(StockIn.quantity)).filter(
+                    StockIn.is_active == True, StockIn.product_id.in_(product_ids),
+                    StockIn.branch_id == view_branch_id,
+                    StockIn.stock_date >= date_from_parsed, StockIn.stock_date <= date_to_parsed
+                ).scalar() or 0
+
+                shipment_qty = db.session.query(func.sum(ShipmentItem.quantity)).filter(
+                    ShipmentItem.is_active == True, ShipmentItem.product_id.in_(product_ids),
+                    ShipmentItem.branch_id == view_branch_id,
+                    ShipmentItem.shipment_date >= date_from_parsed, ShipmentItem.shipment_date <= date_to_parsed
+                ).scalar() or 0
+
+            product_stats.append({
+                'category': cat_name,
+                'stockin': stockin_qty,
+                'shipment': shipment_qty,
+                'stock': stockin_qty - shipment_qty
+            })
+
+        if product_stats:
+            franchise_groups.append({'franchise': franchise_obj, 'products': product_stats})
+
+    # ========================================
+    # 품목별검색 (Category Search)
+    # ========================================
+    cat_search_stats = []
+    if cat_search and view_branch_id:
+        if cat_search_franchise_id:
+            target_franchises = [Franchise.query.get(cat_search_franchise_id)]
         else:
-            stores = Store.query.filter_by(branch_id=branch_id, is_active=True).all()
+            target_franchises = Franchise.query.filter_by(is_active=True).order_by(Franchise.name).all()
 
-        # Group by franchise
-        franchise_groups = {}
-        for store in stores:
-            if store.franchise_id not in franchise_groups:
-                franchise_groups[store.franchise_id] = []
-            franchise_groups[store.franchise_id].append(store.id)
+        for franchise in target_franchises:
+            if not franchise:
+                continue
+            cat_names = [c.name for c in franchise.categories] if franchise.categories else []
+            if cat_search not in cat_names:
+                continue
 
-        # Build product query based on category and/or franchise
-        products_query = Product.query.filter_by(is_active=True)
-        if branch_category:
-            products_query = products_query.filter_by(category=branch_category)
-        if branch_franchise_id:
-            products_query = products_query.filter_by(franchise_id=branch_franchise_id)
-        products_to_show = products_query.all()
+            product_ids = [p.id for p in Product.query.filter_by(
+                is_active=True, franchise_id=franchise.id, category=cat_search
+            ).all()]
 
-        for franchise_id_key, store_ids in franchise_groups.items():
-            franchise = Franchise.query.get(franchise_id_key)
-            for product in products_to_show:
-                if not product:
-                    continue
+            stockin_qty = 0
+            shipment_qty = 0
+            if product_ids:
+                stockin_qty = db.session.query(func.sum(StockIn.quantity)).filter(
+                    StockIn.is_active == True, StockIn.product_id.in_(product_ids),
+                    StockIn.record_type == 'transfer', StockIn.branch_id == view_branch_id,
+                    StockIn.stock_date >= date_from_parsed, StockIn.stock_date <= date_to_parsed
+                ).scalar() or 0
 
-                # Skip products that don't belong to this franchise
-                if product.franchise_id != franchise_id_key:
-                    continue
+                shipment_qty = db.session.query(func.sum(ShipmentItem.quantity)).filter(
+                    ShipmentItem.is_active == True, ShipmentItem.product_id.in_(product_ids),
+                    ShipmentItem.branch_id == view_branch_id,
+                    ShipmentItem.shipment_date >= date_from_parsed, ShipmentItem.shipment_date <= date_to_parsed
+                ).scalar() or 0
 
-                # 입고수량 for this branch (StockIn is at branch level, not store level)
-                stockin_query = db.session.query(func.sum(StockIn.quantity)).filter(
-                    StockIn.is_active == True,
-                    StockIn.product_id == product.id,
-                    StockIn.branch_id == branch_id
-                )
-                if date_from_parsed:
-                    stockin_query = stockin_query.filter(StockIn.stock_date >= date_from_parsed)
-                if date_to_parsed:
-                    stockin_query = stockin_query.filter(StockIn.stock_date <= date_to_parsed)
-                stockin_qty = stockin_query.scalar() or 0
-
-                # 출고수량 for this branch and franchise
-                # Include shipments with store_id in stores OR store_id is NULL (branch level shipments)
-                shipment_query = db.session.query(func.sum(ShipmentItem.quantity)).filter(
-                    ShipmentItem.is_active == True,
-                    ShipmentItem.branch_id == branch_id,
-                    ShipmentItem.product_id == product.id
-                )
-                if store_ids:
-                    shipment_query = shipment_query.filter(
-                        or_(
-                            ShipmentItem.store_id.in_(store_ids),
-                            ShipmentItem.store_id == None
-                        )
-                    )
-                if date_from_parsed:
-                    shipment_query = shipment_query.filter(ShipmentItem.shipment_date >= date_from_parsed)
-                if date_to_parsed:
-                    shipment_query = shipment_query.filter(ShipmentItem.shipment_date <= date_to_parsed)
-                shipment_qty = shipment_query.scalar() or 0
-
-                if stockin_qty > 0 or shipment_qty > 0:
-                    branch_stats.append({
-                        'branch': Branch.query.get(branch_id),
-                        'franchise': franchise,
-                        'product': product,
-                        'stockin': stockin_qty,
-                        'shipment': shipment_qty,
-                        'stock': stockin_qty - shipment_qty
-                    })
+            cat_search_stats.append({
+                'franchise': franchise,
+                'category': cat_search,
+                'stockin': stockin_qty,
+                'shipment': shipment_qty,
+                'stock': stockin_qty - shipment_qty
+            })
 
     # ========================================
-    # 5. 중상 월별검색 (Jungsung Monthly Search)
+    # 중상 검색 (Jungsung Search)
     # ========================================
     jungsung_stats = []
-    if jungsung_id:
-        # Get stores managed by this jungsung
+    if jungsung_id and view_branch_id:
+        jungsung_obj = Jungsung.query.get(jungsung_id)
+
+        stores_query = Store.query.filter_by(jungsung_id=jungsung_id, is_active=True)
         if jungsung_franchise_id:
-            stores = Store.query.filter_by(jungsung_id=jungsung_id, franchise_id=jungsung_franchise_id, is_active=True).all()
+            stores_query = stores_query.filter_by(franchise_id=jungsung_franchise_id)
+        stores = stores_query.all()
+
+        if jungsung_franchise_id:
+            target_franchises = [Franchise.query.get(jungsung_franchise_id)]
         else:
-            stores = Store.query.filter_by(jungsung_id=jungsung_id, is_active=True).all()
+            target_franchises = Franchise.query.filter_by(is_active=True).order_by(Franchise.name).all()
 
-        # Group by franchise
-        franchise_groups = {}
-        for store in stores:
-            if store.franchise_id not in franchise_groups:
-                franchise_groups[store.franchise_id] = []
-            franchise_groups[store.franchise_id].append(store.id)
+        waste_cats = get_waste_category_names()
 
-        # Build product query based on category and/or franchise
-        products_query = Product.query.filter_by(is_active=True)
-        if jungsung_category:
-            products_query = products_query.filter_by(category=jungsung_category)
-        if jungsung_franchise_id:
-            products_query = products_query.filter_by(franchise_id=jungsung_franchise_id)
-        products_to_show = products_query.all()
+        for franchise in target_franchises:
+            if not franchise:
+                continue
+            cat_names = [c.name for c in franchise.categories] if franchise.categories else []
+            if jungsung_category:
+                cat_names = [c for c in cat_names if c == jungsung_category]
 
-        for franchise_id_key, store_ids in franchise_groups.items():
-            franchise = Franchise.query.get(franchise_id_key)
-            for product in products_to_show:
-                if not product:
-                    continue
+            franchise_store_ids = [s.id for s in stores if s.franchise_id == franchise.id]
 
-                # Skip if product doesn't belong to this franchise
-                if product.franchise_id != franchise_id_key:
-                    continue
+            for cat_name in sorted(cat_names):
+                product_ids = [p.id for p in Product.query.filter_by(
+                    is_active=True, franchise_id=franchise.id, category=cat_name
+                ).all()]
 
-                # 출고수량 for this product and these stores
-                # Handle both new data (with store_id) and old data (with jungsung_id only)
-                shipment_query = db.session.query(func.sum(ShipmentItem.quantity)).filter(
-                    ShipmentItem.is_active == True,
-                    ShipmentItem.product_id == product.id,
-                    or_(
-                        ShipmentItem.store_id.in_(store_ids),
-                        and_(
-                            ShipmentItem.jungsung_id == jungsung_id,
-                            ShipmentItem.store_id == None
+                shipment_qty = 0
+                if product_ids:
+                    shipment_filters = [
+                        ShipmentItem.is_active == True,
+                        ShipmentItem.product_id.in_(product_ids),
+                        ShipmentItem.branch_id == view_branch_id
+                    ]
+                    if franchise_store_ids:
+                        shipment_filters.append(
+                            or_(
+                                ShipmentItem.store_id.in_(franchise_store_ids),
+                                and_(ShipmentItem.jungsung_id == jungsung_id, ShipmentItem.store_id == None)
+                            )
                         )
+                    else:
+                        shipment_filters.append(
+                            and_(ShipmentItem.jungsung_id == jungsung_id, ShipmentItem.store_id == None)
+                        )
+                    shipment_query = db.session.query(func.sum(ShipmentItem.quantity)).filter(*shipment_filters)
+                    shipment_query = shipment_query.filter(
+                        ShipmentItem.shipment_date >= date_from_parsed,
+                        ShipmentItem.shipment_date <= date_to_parsed
                     )
-                )
-                if date_from_parsed:
-                    shipment_query = shipment_query.filter(ShipmentItem.shipment_date >= date_from_parsed)
-                if date_to_parsed:
-                    shipment_query = shipment_query.filter(ShipmentItem.shipment_date <= date_to_parsed)
-                if not current_user.is_admin():
-                    shipment_query = shipment_query.filter(ShipmentItem.branch_id == current_user.branch_id)
-                shipment_qty = shipment_query.scalar() or 0
+                    shipment_qty = shipment_query.scalar() or 0
 
-                # ERP등록 - Calculate from ERPRegistration table (excluding 폐유)
-                # Get all ERP registrations for these stores in the date range
-                erp_query = ERPRegistration.query.filter(
-                    ERPRegistration.store_id.in_(store_ids),
-                    ERPRegistration.is_return == False
-                )
-                if date_from_parsed:
-                    erp_query = erp_query.filter(ERPRegistration.registration_date >= date_from_parsed)
-                if date_to_parsed:
-                    erp_query = erp_query.filter(ERPRegistration.registration_date <= date_to_parsed)
-                erp_regs = erp_query.all()
-
-                # Sum quantities for this product's category (excluding 폐유)
                 erp_registered = 0
-                if product.category != '폐유':  # Only count if product itself is not 폐유
-                    for erp_reg in erp_regs:
+                if franchise_store_ids and cat_name not in waste_cats:
+                    erp_query = ERPRegistration.query.filter(
+                        ERPRegistration.store_id.in_(franchise_store_ids),
+                        ERPRegistration.is_return == False,
+                        ERPRegistration.registration_date >= date_from_parsed,
+                        ERPRegistration.registration_date <= date_to_parsed
+                    )
+                    for erp_reg in erp_query.all():
                         qty_dict = erp_reg.get_category_quantities()
-                        if qty_dict and product.category in qty_dict:
-                            erp_registered += qty_dict[product.category]
+                        if qty_dict and cat_name in qty_dict:
+                            erp_registered += qty_dict[cat_name]
 
-                # Calculate unregistered (allow negative values to show over-registration)
-                erp_unregistered = shipment_qty - erp_registered
-
-                if shipment_qty > 0 or erp_registered > 0:
-                    jungsung_stats.append({
-                        'jungsung': Jungsung.query.get(jungsung_id),
-                        'franchise': franchise,
-                        'product': product,
-                        'shipment': shipment_qty,
-                        'erp_registered': erp_registered,
-                        'erp_unregistered': erp_unregistered
-                    })
+                jungsung_stats.append({
+                    'jungsung': jungsung_obj,
+                    'franchise': franchise,
+                    'category': cat_name,
+                    'shipment': shipment_qty,
+                    'erp_registered': erp_registered,
+                    'erp_unregistered': shipment_qty - erp_registered
+                })
 
     # Get data for filter dropdowns
-    franchises = Franchise.query.filter_by(is_active=True).order_by(Franchise.name).all()
-    suppliers = Supplier.query.filter_by(is_active=True).order_by(Supplier.company_name).all()
-    products = Product.query.filter_by(is_active=True).order_by(Product.category, Product.name).all()
+    cat_franchise_map, all_category_names, franchises = _get_cat_franchise_map()
 
     if current_user.is_admin():
         branches = Branch.query.filter_by(is_active=True).order_by(Branch.name).all()
@@ -2448,39 +2541,34 @@ def inventory_status():
         branches = [current_user.branch] if current_user.branch else []
         jungsungs = Jungsung.query.filter_by(is_active=True, branch_id=current_user.branch_id).order_by(Jungsung.business_name).all()
 
-    return render_template('admin/inventory_status.html',
-                           year=year,
-                           month=month,
-                           current_year=current_year,
-                           period_type=period_type,
-                           period_display=period_display,
+    view_branch_obj = Branch.query.get(view_branch_id) if view_branch_id else None
+
+    return render_template('admin/branch_inventory.html',
+                           year=period['year'], month=period['month'],
+                           current_year=period['current_year'],
+                           period_type=period['period_type'],
                            total_stats=total_stats,
-                           franchise_stats=franchise_stats,
+                           view_branch_id=view_branch_id,
+                           view_branch_obj=view_branch_obj,
                            franchise_groups=franchise_groups,
-                           supplier_stats=supplier_stats,
-                           branch_stats=branch_stats,
+                           cat_search_stats=cat_search_stats,
                            jungsung_stats=jungsung_stats,
                            franchises=franchises,
-                           suppliers=suppliers,
-                           products=products,
                            branches=branches,
                            jungsungs=jungsungs,
+                           cat_franchise_map_json=json.dumps(cat_franchise_map),
+                           all_category_names=all_category_names,
                            filters={
-                               'year': year,
-                               'month': month,
-                               'date_from': date_from,
-                               'date_to': date_to,
+                               'date_from': period['date_from'],
+                               'date_to': period['date_to'],
+                               'view_branch_id': view_branch_id,
                                'franchise_id': franchise_id,
                                'franchise_category': franchise_category,
-                               'supplier_id': supplier_id,
-                               'supplier_category': supplier_category,
-                               'supplier_franchise_id': supplier_franchise_id,
-                               'branch_id': branch_id,
-                               'branch_franchise_id': branch_franchise_id,
-                               'branch_category': branch_category,
+                               'cat_search': cat_search,
+                               'cat_search_franchise_id': cat_search_franchise_id,
                                'jungsung_id': jungsung_id,
                                'jungsung_franchise_id': jungsung_franchise_id,
-                               'jungsung_category': jungsung_category
+                               'jungsung_category': jungsung_category,
                            })
 
 
@@ -2492,14 +2580,26 @@ def inventory_status():
 @login_required
 @branch_required
 def receivables():
-    """미수금 관리 - Accounts Receivable Management - accessible by admin and branch users"""
-    # Get filter parameters
+    """미수금 관리 - redirect to appropriate page"""
+    return redirect(url_for('admin.receivables_hq'))
+
+
+# ------------------------------------------
+# 본사-지사 미수금 (HQ-Branch Receivables)
+# ------------------------------------------
+
+@admin_bp.route('/receivables/hq')
+@login_required
+@branch_required
+def receivables_hq():
+    """본사-지사 미수금 - Admin + Branch can view, Admin only can add payments"""
+    view_mode = request.args.get('view_mode', 'branch')  # 'branch' (default) or 'franchise'
     franchise_id = request.args.get('franchise_id', type=int)
     product_id = request.args.get('product_id', type=int)
     date_from = request.args.get('date_from')
     date_to = request.args.get('date_to')
+    filter_branch_id = request.args.get('branch_id', type=int)
 
-    # Parse dates
     date_from_parsed = None
     date_to_parsed = None
     if date_from:
@@ -2513,57 +2613,65 @@ def receivables():
         except ValueError:
             pass
 
-    # Get branches for columns - branch users only see their own branch
+    # Always get all branches and franchises
     if current_user.is_admin():
-        branches = Branch.query.filter_by(is_active=True).order_by(Branch.name).all()
+        all_branches = Branch.query.filter_by(is_active=True).order_by(Branch.name).all()
     else:
-        branches = [current_user.branch] if current_user.branch else []
+        all_branches = [current_user.branch] if current_user.branch else []
 
-    # Build data structure: Group by franchise, then by product
-    franchises_query = Franchise.query.filter_by(is_active=True)
+    all_franchises = Franchise.query.filter_by(is_active=True).order_by(Franchise.name).all()
+    all_products = Product.query.filter_by(is_active=True).order_by(Product.name).all()
+
+    # Determine branches for data query (지사별 view always uses all branches)
+    if view_mode == 'branch':
+        branches = all_branches
+    else:
+        if current_user.is_admin():
+            if filter_branch_id:
+                branches = [Branch.query.get(filter_branch_id)]
+                branches = [b for b in branches if b]
+            else:
+                branches = all_branches
+        else:
+            branches = [current_user.branch] if current_user.branch else []
+
+    # Determine franchises for data query
     if franchise_id:
-        franchises_query = franchises_query.filter_by(id=franchise_id)
-    franchises = franchises_query.order_by(Franchise.name).all()
+        franchises = Franchise.query.filter_by(is_active=True, id=franchise_id).order_by(Franchise.name).all()
+    else:
+        franchises = all_franchises
 
-    # Build receivables data
+    # Build receivables data (franchise × product rows, branch columns)
     receivables_data = []
-
-    # Pre-calculate total payments per branch for the summary row
     branch_total_payments = {}
+
     for branch in branches:
-        payments_query = db.session.query(func.sum(Payment.amount)).filter(
-            Payment.is_active == True,
+        pq = db.session.query(func.sum(Payment.amount)).filter(
+            Payment.is_active == True, Payment.payment_type == 'hq_branch',
             Payment.branch_id == branch.id
         )
         if date_from_parsed:
-            payments_query = payments_query.filter(Payment.payment_date >= date_from_parsed)
+            pq = pq.filter(Payment.payment_date >= date_from_parsed)
         if date_to_parsed:
-            payments_query = payments_query.filter(Payment.payment_date <= date_to_parsed)
-
-        branch_total_payments[branch.id] = payments_query.scalar() or 0
+            pq = pq.filter(Payment.payment_date <= date_to_parsed)
+        branch_total_payments[branch.id] = pq.scalar() or 0
 
     for franchise in franchises:
-        # Get products for this franchise
         products_query = Product.query.filter_by(is_active=True, franchise_id=franchise.id)
         if product_id:
             products_query = products_query.filter_by(id=product_id)
         products = products_query.order_by(Product.name).all()
 
         for product in products:
-            row_data = {
-                'franchise': franchise,
-                'product': product,
-                'branches': {}
-            }
-
+            row_data = {'franchise': franchise, 'product': product, 'branches': {}}
             total_qty = 0
             total_amount = 0
             total_paid = 0
 
             for branch in branches:
-                # Calculate 입고 quantity for this branch/franchise/product
                 stockin_query = db.session.query(func.sum(StockIn.quantity)).filter(
                     StockIn.is_active == True,
+                    StockIn.record_type == 'transfer',
                     StockIn.branch_id == branch.id,
                     StockIn.product_id == product.id
                 )
@@ -2571,15 +2679,12 @@ def receivables():
                     stockin_query = stockin_query.filter(StockIn.stock_date >= date_from_parsed)
                 if date_to_parsed:
                     stockin_query = stockin_query.filter(StockIn.stock_date <= date_to_parsed)
-
                 qty = stockin_query.scalar() or 0
 
-                # Calculate amount (입고 * 단가)
                 amount = qty * product.unit_price if qty > 0 else 0
 
-                # Calculate payments for this specific franchise/product/branch combination
                 payment_query = db.session.query(func.sum(Payment.amount)).filter(
-                    Payment.is_active == True,
+                    Payment.is_active == True, Payment.payment_type == 'hq_branch',
                     Payment.branch_id == branch.id,
                     Payment.franchise_id == franchise.id,
                     Payment.product_id == product.id
@@ -2588,16 +2693,11 @@ def receivables():
                     payment_query = payment_query.filter(Payment.payment_date >= date_from_parsed)
                 if date_to_parsed:
                     payment_query = payment_query.filter(Payment.payment_date <= date_to_parsed)
-
                 paid = payment_query.scalar() or 0
 
                 row_data['branches'][branch.id] = {
-                    'qty': qty,
-                    'amount': amount,
-                    'paid': paid,
-                    'unpaid': amount - paid
+                    'qty': qty, 'amount': amount, 'paid': paid, 'unpaid': amount - paid
                 }
-
                 total_qty += qty
                 total_amount += amount
                 total_paid += paid
@@ -2607,63 +2707,294 @@ def receivables():
             row_data['total_paid'] = total_paid
             row_data['total_unpaid'] = total_amount - total_paid
 
-            # Only add rows with data
             if total_qty > 0 or total_paid > 0:
                 receivables_data.append(row_data)
 
-    # Get all franchises and products for filter dropdowns
-    if current_user.is_admin():
-        all_franchises = Franchise.query.filter_by(is_active=True).order_by(Franchise.name).all()
-        all_products = Product.query.filter_by(is_active=True).order_by(Product.name).all()
-    else:
-        # Branch users only see franchises and products related to their branch
-        franchise_ids = db.session.query(Store.franchise_id).filter(
-            Store.branch_id == current_user.branch_id,
-            Store.is_active == True
-        ).distinct().all()
-        franchise_ids = [f[0] for f in franchise_ids if f[0] is not None]
-        if franchise_ids:
-            all_franchises = Franchise.query.filter(
-                Franchise.is_active == True,
-                Franchise.id.in_(franchise_ids)
-            ).order_by(Franchise.name).all()
-            all_products = Product.query.filter(
-                Product.is_active == True,
-                Product.franchise_id.in_(franchise_ids)
-            ).order_by(Product.name).all()
-        else:
-            all_franchises = Franchise.query.filter_by(is_active=True).order_by(Franchise.name).all()
-            all_products = Product.query.filter_by(is_active=True).order_by(Product.name).all()
-
-    # Calculate grand totals
     grand_total_unpaid = sum(row['total_unpaid'] for row in receivables_data)
 
-    return render_template('admin/receivables.html',
+    # Build branch-grouped data for 지사별 view (rows=branch, columns=franchise)
+    branch_grouped_data = []
+    if view_mode == 'branch':
+        for branch in all_branches:
+            row_data = {'branch': branch, 'franchises': {}}
+            total_qty = 0
+            total_amount = 0
+            total_paid = 0
+            for fobj in all_franchises:
+                f_qty = 0
+                f_amount = 0
+                f_paid = 0
+                for row in receivables_data:
+                    if row['franchise'].id == fobj.id:
+                        bd = row['branches'].get(branch.id, {})
+                        f_qty += bd.get('qty', 0)
+                        f_amount += bd.get('amount', 0)
+                        f_paid += bd.get('paid', 0)
+                row_data['franchises'][fobj.id] = {
+                    'qty': f_qty, 'amount': f_amount, 'paid': f_paid, 'unpaid': f_amount - f_paid
+                }
+                total_qty += f_qty
+                total_amount += f_amount
+                total_paid += f_paid
+            row_data['total_qty'] = total_qty
+            row_data['total_amount'] = total_amount
+            row_data['total_paid'] = total_paid
+            row_data['total_unpaid'] = total_amount - total_paid
+            branch_grouped_data.append(row_data)
+
+    return render_template('admin/receivables_hq.html',
                            branches=branches,
+                           all_branches=all_branches,
                            receivables_data=receivables_data,
+                           branch_grouped_data=branch_grouped_data,
                            grand_total_unpaid=grand_total_unpaid,
                            branch_total_payments=branch_total_payments,
                            all_franchises=all_franchises,
                            all_products=all_products,
+                           view_mode=view_mode,
                            filters={
                                'franchise_id': franchise_id,
                                'product_id': product_id,
                                'date_from': date_from,
-                               'date_to': date_to
+                               'date_to': date_to,
+                               'branch_id': filter_branch_id,
                            })
 
+
+# ------------------------------------------
+# 지사-중상 미수금 (Branch-Jungsung Receivables)
+# ------------------------------------------
+
+@admin_bp.route('/receivables/branch')
+@login_required
+def receivables_branch():
+    """지사-중상 미수금 - Admin + Branch + Jungsung can view, Admin/Branch can add payments"""
+    if not (current_user.is_admin() or current_user.is_branch() or current_user.is_jungsung()):
+        flash('권한이 없습니다.', 'danger')
+        return redirect(url_for('auth.login'))
+    view_mode = request.args.get('view_mode', 'jungsung')  # 'jungsung' (default) or 'franchise'
+    franchise_id = request.args.get('franchise_id', type=int)
+    product_id = request.args.get('product_id', type=int)
+    date_from = request.args.get('date_from')
+    date_to = request.args.get('date_to')
+
+    date_from_parsed = None
+    date_to_parsed = None
+    if date_from:
+        try:
+            date_from_parsed = datetime.strptime(date_from, '%Y-%m-%d').date()
+        except ValueError:
+            pass
+    if date_to:
+        try:
+            date_to_parsed = datetime.strptime(date_to, '%Y-%m-%d').date()
+        except ValueError:
+            pass
+
+    # Determine which branch to view
+    if current_user.is_admin():
+        view_branch_id = request.args.get('view_branch_id', type=int)
+        all_branches = Branch.query.filter_by(is_active=True).order_by(Branch.name).all()
+    elif current_user.is_branch():
+        view_branch_id = current_user.branch_id
+        all_branches = [current_user.branch] if current_user.branch else []
+    elif current_user.is_jungsung() and current_user.jungsung:
+        view_branch_id = current_user.jungsung.branch_id
+        all_branches = []
+    else:
+        view_branch_id = None
+        all_branches = []
+
+    # Get jungsungs for columns
+    jungsungs = []
+    if view_branch_id:
+        if current_user.is_jungsung() and current_user.jungsung:
+            jungsungs = [current_user.jungsung]
+        else:
+            jungsungs = Jungsung.query.filter_by(
+                is_active=True, branch_id=view_branch_id
+            ).order_by(Jungsung.business_name).all()
+
+    # Build data
+    franchises_query = Franchise.query.filter_by(is_active=True)
+    if franchise_id:
+        franchises_query = franchises_query.filter_by(id=franchise_id)
+    franchises = franchises_query.order_by(Franchise.name).all()
+
+    receivables_data = []
+    jungsung_total_payments = {}
+
+    if view_branch_id and jungsungs:
+        # Pre-calculate total payments per jungsung
+        for js in jungsungs:
+            pq = db.session.query(func.sum(Payment.amount)).filter(
+                Payment.is_active == True, Payment.payment_type == 'branch_jungsung',
+                Payment.branch_id == view_branch_id,
+                Payment.jungsung_id == js.id
+            )
+            if date_from_parsed:
+                pq = pq.filter(Payment.payment_date >= date_from_parsed)
+            if date_to_parsed:
+                pq = pq.filter(Payment.payment_date <= date_to_parsed)
+            jungsung_total_payments[js.id] = pq.scalar() or 0
+
+        for franchise in franchises:
+            products_query = Product.query.filter_by(is_active=True, franchise_id=franchise.id)
+            if product_id:
+                products_query = products_query.filter_by(id=product_id)
+            products = products_query.order_by(Product.name).all()
+
+            for product in products:
+                row_data = {'franchise': franchise, 'product': product, 'jungsungs': {}}
+                total_qty = 0
+                total_amount = 0
+                total_paid = 0
+
+                for js in jungsungs:
+                    # Get stores for this jungsung + franchise
+                    store_ids = [s.id for s in Store.query.filter_by(
+                        jungsung_id=js.id, franchise_id=franchise.id, is_active=True
+                    ).all()]
+
+                    # 출고(지사→매장): ShipmentItem from this branch to this jungsung's stores
+                    shipment_qty = 0
+                    if store_ids:
+                        sq = db.session.query(func.sum(ShipmentItem.quantity)).filter(
+                            ShipmentItem.is_active == True,
+                            ShipmentItem.branch_id == view_branch_id,
+                            ShipmentItem.product_id == product.id,
+                            or_(
+                                ShipmentItem.store_id.in_(store_ids),
+                                and_(ShipmentItem.jungsung_id == js.id, ShipmentItem.store_id == None)
+                            )
+                        )
+                        if date_from_parsed:
+                            sq = sq.filter(ShipmentItem.shipment_date >= date_from_parsed)
+                        if date_to_parsed:
+                            sq = sq.filter(ShipmentItem.shipment_date <= date_to_parsed)
+                        shipment_qty = sq.scalar() or 0
+                    else:
+                        # No stores but might have direct jungsung shipments
+                        sq = db.session.query(func.sum(ShipmentItem.quantity)).filter(
+                            ShipmentItem.is_active == True,
+                            ShipmentItem.branch_id == view_branch_id,
+                            ShipmentItem.product_id == product.id,
+                            ShipmentItem.jungsung_id == js.id,
+                            ShipmentItem.store_id == None
+                        )
+                        if date_from_parsed:
+                            sq = sq.filter(ShipmentItem.shipment_date >= date_from_parsed)
+                        if date_to_parsed:
+                            sq = sq.filter(ShipmentItem.shipment_date <= date_to_parsed)
+                        shipment_qty = sq.scalar() or 0
+
+                    amount = shipment_qty * product.unit_price if shipment_qty > 0 else 0
+
+                    # Payments for this jungsung/franchise/product
+                    pq = db.session.query(func.sum(Payment.amount)).filter(
+                        Payment.is_active == True, Payment.payment_type == 'branch_jungsung',
+                        Payment.branch_id == view_branch_id,
+                        Payment.jungsung_id == js.id,
+                        Payment.franchise_id == franchise.id,
+                        Payment.product_id == product.id
+                    )
+                    if date_from_parsed:
+                        pq = pq.filter(Payment.payment_date >= date_from_parsed)
+                    if date_to_parsed:
+                        pq = pq.filter(Payment.payment_date <= date_to_parsed)
+                    paid = pq.scalar() or 0
+
+                    row_data['jungsungs'][js.id] = {
+                        'qty': shipment_qty, 'amount': amount, 'paid': paid, 'unpaid': amount - paid
+                    }
+                    total_qty += shipment_qty
+                    total_amount += amount
+                    total_paid += paid
+
+                row_data['total_qty'] = total_qty
+                row_data['total_amount'] = total_amount
+                row_data['total_paid'] = total_paid
+                row_data['total_unpaid'] = total_amount - total_paid
+
+                if total_qty > 0 or total_paid > 0:
+                    receivables_data.append(row_data)
+
+    all_franchises = Franchise.query.filter_by(is_active=True).order_by(Franchise.name).all()
+    all_products = Product.query.filter_by(is_active=True).order_by(Product.name).all()
+    grand_total_unpaid = sum(row['total_unpaid'] for row in receivables_data)
+
+    # Build jungsung-grouped data for 중상별 view (rows=jungsung, columns=franchise)
+    jungsung_grouped_data = []
+    if view_mode == 'jungsung' and jungsungs:
+        for js in jungsungs:
+            row_data = {'jungsung': js, 'franchises': {}}
+            total_qty = 0
+            total_amount = 0
+            total_paid = 0
+            for fobj in all_franchises:
+                f_qty = 0
+                f_amount = 0
+                f_paid = 0
+                for row in receivables_data:
+                    if row['franchise'].id == fobj.id:
+                        jd = row['jungsungs'].get(js.id, {})
+                        f_qty += jd.get('qty', 0)
+                        f_amount += jd.get('amount', 0)
+                        f_paid += jd.get('paid', 0)
+                row_data['franchises'][fobj.id] = {
+                    'qty': f_qty, 'amount': f_amount, 'paid': f_paid, 'unpaid': f_amount - f_paid
+                }
+                total_qty += f_qty
+                total_amount += f_amount
+                total_paid += f_paid
+            row_data['total_qty'] = total_qty
+            row_data['total_amount'] = total_amount
+            row_data['total_paid'] = total_paid
+            row_data['total_unpaid'] = total_amount - total_paid
+            jungsung_grouped_data.append(row_data)
+
+    return render_template('admin/receivables_branch.html',
+                           view_branch_id=view_branch_id,
+                           all_branches=all_branches,
+                           jungsungs=jungsungs,
+                           receivables_data=receivables_data,
+                           jungsung_grouped_data=jungsung_grouped_data,
+                           grand_total_unpaid=grand_total_unpaid,
+                           jungsung_total_payments=jungsung_total_payments,
+                           all_franchises=all_franchises,
+                           all_products=all_products,
+                           view_mode=view_mode,
+                           filters={
+                               'franchise_id': franchise_id,
+                               'product_id': product_id,
+                               'date_from': date_from,
+                               'date_to': date_to,
+                               'view_branch_id': view_branch_id,
+                           })
+
+
+# ------------------------------------------
+# Payment APIs
+# ------------------------------------------
 
 @admin_bp.route('/api/payments/add', methods=['POST'])
 @login_required
 @branch_required
 def add_payment():
-    """Add a new payment entry - accessible by admin and branch users"""
+    """Add a new payment entry"""
     try:
         data = request.get_json()
+        payment_type = data.get('payment_type', 'hq_branch')
+
+        # 본사-지사: admin only
+        if payment_type == 'hq_branch' and not current_user.is_admin():
+            return jsonify({'success': False, 'message': '관리자만 본사-지사 입금 등록이 가능합니다.'}), 403
 
         payment = Payment(
+            payment_type=payment_type,
             payment_date=datetime.strptime(data['payment_date'], '%Y-%m-%d').date(),
             branch_id=data['branch_id'],
+            jungsung_id=data.get('jungsung_id'),
             franchise_id=data.get('franchise_id'),
             product_id=data.get('product_id'),
             amount=int(data['amount']),
@@ -2680,7 +3011,7 @@ def add_payment():
             'payment': {
                 'id': payment.id,
                 'payment_date': payment.payment_date.strftime('%Y-%m-%d'),
-                'branch': payment.branch.name,
+                'branch': payment.branch.name if payment.branch else '-',
                 'amount': payment.amount,
                 'memo': payment.memo
             }
@@ -2695,21 +3026,17 @@ def add_payment():
 @login_required
 @branch_required
 def delete_payment(payment_id):
-    """Delete a payment entry - accessible by admin and branch users"""
+    """Delete a payment entry"""
     try:
         payment = Payment.query.get_or_404(payment_id)
 
-        # Branch users can only delete payments from their branch
         if not current_user.is_admin() and payment.branch_id != current_user.branch_id:
             return jsonify({'success': False, 'message': '권한이 없습니다.'}), 403
 
         payment.is_active = False
         db.session.commit()
 
-        return jsonify({
-            'success': True,
-            'message': '입금 내역이 삭제되었습니다.'
-        })
+        return jsonify({'success': True, 'message': '입금 내역이 삭제되었습니다.'})
 
     except Exception as e:
         db.session.rollback()
@@ -2720,38 +3047,40 @@ def delete_payment(payment_id):
 @login_required
 @branch_required
 def list_payments():
-    """Get list of payments - accessible by admin and branch users"""
+    """Get list of payments"""
+    payment_type = request.args.get('payment_type', 'hq_branch')
     branch_id = request.args.get('branch_id', type=int)
+    jungsung_id = request.args.get('jungsung_id', type=int)
     franchise_id = request.args.get('franchise_id', type=int)
     product_id = request.args.get('product_id', type=int)
     date_from = request.args.get('date_from')
     date_to = request.args.get('date_to')
 
-    payments_query = Payment.query.filter_by(is_active=True)
+    payments_query = Payment.query.filter_by(is_active=True, payment_type=payment_type)
 
-    # Branch users only see payments from their branch
     if not current_user.is_admin():
-        payments_query = payments_query.filter_by(branch_id=current_user.branch_id)
+        if current_user.is_branch():
+            payments_query = payments_query.filter_by(branch_id=current_user.branch_id)
+        elif current_user.is_jungsung() and current_user.jungsung:
+            payments_query = payments_query.filter_by(jungsung_id=current_user.jungsung.id)
 
     if branch_id:
         payments_query = payments_query.filter_by(branch_id=branch_id)
+    if jungsung_id:
+        payments_query = payments_query.filter_by(jungsung_id=jungsung_id)
     if franchise_id:
         payments_query = payments_query.filter_by(franchise_id=franchise_id)
     if product_id:
         payments_query = payments_query.filter_by(product_id=product_id)
 
-    # Date filtering
     if date_from:
         try:
-            date_from_parsed = datetime.strptime(date_from, '%Y-%m-%d').date()
-            payments_query = payments_query.filter(Payment.payment_date >= date_from_parsed)
+            payments_query = payments_query.filter(Payment.payment_date >= datetime.strptime(date_from, '%Y-%m-%d').date())
         except ValueError:
             pass
-
     if date_to:
         try:
-            date_to_parsed = datetime.strptime(date_to, '%Y-%m-%d').date()
-            payments_query = payments_query.filter(Payment.payment_date <= date_to_parsed)
+            payments_query = payments_query.filter(Payment.payment_date <= datetime.strptime(date_to, '%Y-%m-%d').date())
         except ValueError:
             pass
 
@@ -2763,6 +3092,7 @@ def list_payments():
             'id': p.id,
             'payment_date': p.payment_date.strftime('%Y-%m-%d'),
             'branch': p.branch.name if p.branch else '-',
+            'jungsung': p.jungsung.business_name if p.jungsung else '-',
             'franchise': p.franchise.name if p.franchise else '-',
             'product': p.product.name if p.product else '-',
             'amount': p.amount,
@@ -2788,15 +3118,15 @@ def erp_tracking():
     selected_category = request.args.get('category', '전체')
 
     # Get filter parameters
-    year = request.args.get('year', type=int) or date.today().year
-    month = request.args.get('month', type=int) or date.today().month
+    year = request.args.get('year', type=int) or kst_today().year
+    month = request.args.get('month', type=int) or kst_today().month
 
     # Date range filter
     date_from = request.args.get('date_from')
     date_to = request.args.get('date_to')
 
     # Default date range to current month if not specified
-    today = date.today()
+    today = kst_today()
     if not date_from:
         date_from = today.replace(day=1).strftime('%Y-%m-%d')
     if not date_to:
@@ -3008,12 +3338,7 @@ def erp_tracking():
 @login_required
 @branch_required
 def daily_shipments():
-    """Daily shipment search - Branch users only (지사 전용)"""
-    # Only allow branch users (not admin)
-    if current_user.is_admin():
-        flash('이 페이지는 지사 전용입니다.', 'warning')
-        return redirect(url_for('admin.shipments_list'))
-
+    """Daily shipment search - Admin and Branch users"""
     # Get filter parameters
     date_from = request.args.get('date_from')
     date_to = request.args.get('date_to')
@@ -3021,7 +3346,7 @@ def daily_shipments():
     franchise_id = request.args.get('franchise_id', type=int)
 
     # Default to current month if no dates specified
-    today = date.today()
+    today = kst_today()
     if not date_from:
         date_from = today.replace(day=1).strftime('%Y-%m-%d')
     if not date_to:
@@ -3030,20 +3355,31 @@ def daily_shipments():
     date_from_parsed = datetime.strptime(date_from, '%Y-%m-%d').date()
     date_to_parsed = datetime.strptime(date_to, '%Y-%m-%d').date()
 
-    # Get product categories
-    oil_products = Product.query.filter_by(category='식용유', is_active=True).all()
-    oil_product_ids = [p.id for p in oil_products]
+    # Get all active categories from DB (never hardcode category names)
+    all_categories = Category.query.filter_by(is_active=True).order_by(Category.id).all()
+    category_names = [c.name for c in all_categories]
 
-    flour_products = Product.query.filter_by(category='밀가루', is_active=True).all()
-    flour_product_ids = [p.id for p in flour_products]
+    # Build franchise_id → [category_name] mapping from franchise_categories table
+    all_franchises_ds = Franchise.query.filter_by(is_active=True).all()
+    franchise_cat_map_ds = {}
+    for f in all_franchises_ds:
+        franchise_cat_map_ds[f.id] = [c.name for c in f.categories] if f.categories else []
 
-    # Base query - only this branch's shipments
+    # Build product_id → (category, franchise_id) lookup from all active products
+    all_products = Product.query.filter_by(is_active=True).all()
+    product_info_map = {}  # product_id → {'category': str, 'franchise_id': int}
+    for p in all_products:
+        product_info_map[p.id] = {'category': p.category, 'franchise_id': p.franchise_id}
+
+    # Base query
     base_query = ShipmentItem.query.filter(
         ShipmentItem.is_active == True,
-        ShipmentItem.branch_id == current_user.branch_id,
         ShipmentItem.shipment_date >= date_from_parsed,
         ShipmentItem.shipment_date <= date_to_parsed
     )
+    # Branch users only see their branch's shipments
+    if not current_user.is_admin():
+        base_query = base_query.filter(ShipmentItem.branch_id == current_user.branch_id)
 
     if jungsung_id:
         base_query = base_query.filter(ShipmentItem.jungsung_id == jungsung_id)
@@ -3054,60 +3390,86 @@ def daily_shipments():
     # Group by date, jungsung (person), and franchise
     daily_data = {}
     for item in items:
-        # Get store's franchise
+        # Get product info
+        prod_info = product_info_map.get(item.product_id)
+        if not prod_info:
+            continue
+        product_category = prod_info['category']
+
+        # Determine franchise from store or from product
         store = item.store
-        if not store:
+        item_franchise_id = None
+        item_franchise = None
+
+        if store:
+            item_franchise_id = store.franchise_id
+            item_franchise = store.franchise
+        else:
+            # Jungsung-level shipment - get franchise from product
+            item_franchise_id = prod_info['franchise_id']
+            if item_franchise_id:
+                item_franchise = Franchise.query.get(item_franchise_id)
+
+        if not item_franchise_id:
             continue
 
-        if franchise_id and store.franchise_id != franchise_id:
+        if franchise_id and item_franchise_id != franchise_id:
+            continue
+
+        # Check if product's category is valid for this franchise (franchise_categories)
+        valid_cats = franchise_cat_map_ds.get(item_franchise_id, [])
+        if valid_cats and product_category not in valid_cats:
             continue
 
         key = (
             item.shipment_date,
             item.jungsung_id,
-            store.franchise_id
+            item_franchise_id
         )
 
         if key not in daily_data:
+            # Initialize with 0 for ALL categories dynamically
+            cat_qtys = {cat: 0 for cat in category_names}
             daily_data[key] = {
                 'date': item.shipment_date,
                 'jungsung': item.jungsung,
-                'franchise': store.franchise,
-                'oil': 0,
-                'flour': 0
+                'franchise': item_franchise,
+                'categories': cat_qtys
             }
 
-        # Add quantities based on product category
-        if item.product_id in oil_product_ids:
-            daily_data[key]['oil'] += item.quantity
-        elif item.product_id in flour_product_ids:
-            daily_data[key]['flour'] += item.quantity
+        # Add quantity to the correct category
+        if product_category in daily_data[key]['categories']:
+            daily_data[key]['categories'][product_category] += item.quantity
 
     # Convert to list and sort
     daily_list = sorted(daily_data.values(), key=lambda x: (x['date'], x['jungsung'].contact_person if x['jungsung'] else ''))
 
-    # Calculate totals
-    total_oil = sum(d['oil'] for d in daily_list)
-    total_flour = sum(d['flour'] for d in daily_list)
+    # Calculate totals per category
+    category_totals = {cat: 0 for cat in category_names}
+    for d in daily_list:
+        for cat in category_names:
+            category_totals[cat] += d['categories'].get(cat, 0)
 
     # Get filter dropdown data
-    jungsungs = Jungsung.query.filter_by(is_active=True, branch_id=current_user.branch_id).order_by(Jungsung.business_name).all()
-
-    # Get franchises that have stores in this branch
-    franchise_ids = db.session.query(Store.franchise_id).filter(
-        Store.branch_id == current_user.branch_id,
-        Store.is_active == True
-    ).distinct().all()
-    franchise_ids = [f[0] for f in franchise_ids]
-    franchises = Franchise.query.filter(
-        Franchise.is_active == True,
-        Franchise.id.in_(franchise_ids)
-    ).order_by(Franchise.name).all()
+    if current_user.is_admin():
+        jungsungs = Jungsung.query.filter_by(is_active=True).order_by(Jungsung.business_name).all()
+        franchises = Franchise.query.filter_by(is_active=True).order_by(Franchise.name).all()
+    else:
+        jungsungs = Jungsung.query.filter_by(is_active=True, branch_id=current_user.branch_id).order_by(Jungsung.business_name).all()
+        franchise_ids = db.session.query(Store.franchise_id).filter(
+            Store.branch_id == current_user.branch_id,
+            Store.is_active == True
+        ).distinct().all()
+        franchise_ids = [f[0] for f in franchise_ids]
+        franchises = Franchise.query.filter(
+            Franchise.is_active == True,
+            Franchise.id.in_(franchise_ids)
+        ).order_by(Franchise.name).all()
 
     return render_template('admin/daily_shipments.html',
                            daily_list=daily_list,
-                           total_oil=total_oil,
-                           total_flour=total_flour,
+                           category_names=category_names,
+                           category_totals=category_totals,
                            jungsungs=jungsungs,
                            franchises=franchises,
                            filters={
@@ -3135,12 +3497,15 @@ def erp_tracking_admin():
     search_type = request.args.get('search_type', 'weekly')
 
     # Get filter parameters
-    year = request.args.get('year', type=int) or date.today().year
-    month = request.args.get('month', type=int) or date.today().month
+    year = request.args.get('year', type=int) or kst_today().year
+    month = request.args.get('month', type=int) or kst_today().month
 
     # Category filter
     selected_category = request.args.get('category', '전체')
     all_categories = Category.query.filter_by(is_active=True).order_by(Category.id).all()
+
+    # View mode: store or franchise
+    view_mode = request.args.get('view_mode', 'store')  # store or franchise
 
     # Period search parameters
     date_from = request.args.get('date_from')
@@ -3157,17 +3522,36 @@ def erp_tracking_admin():
     date_from_parsed = datetime.strptime(date_from, '%Y-%m-%d').date()
     date_to_parsed = datetime.strptime(date_to, '%Y-%m-%d').date()
 
-    # Get products filtered by category
-    if selected_category == '전체':
-        regular_products = Product.query.filter(
-            Product.is_active == True,
-            Product.category != '폐유'
-        ).all()
+    # Read franchise/store filters early for product filtering
+    franchise_filter = request.args.get('franchise_id', type=int)
+    store_filter = request.args.get('store_id', type=int)
+
+    # Get products filtered by category (and by franchise_categories when franchise filter is applied)
+    franchise_cat_names_admin = None  # used by erp_category_sum when franchise filter active
+    product_query = Product.query.filter(Product.is_active == True)
+
+    if franchise_filter:
+        # Filter products by franchise's categories from franchise_categories table
+        franchise_obj = Franchise.query.get(franchise_filter)
+        franchise_cat_names_admin = [c.name for c in franchise_obj.categories] if franchise_obj and franchise_obj.categories else []
+        product_query = product_query.filter(Product.franchise_id == franchise_filter)
+        if selected_category == '전체':
+            if franchise_cat_names_admin:
+                product_query = product_query.filter(
+                    Product.category.in_(franchise_cat_names_admin),
+                    ~Product.category.in_(get_waste_category_names())
+                )
+            else:
+                product_query = product_query.filter(False)  # no valid categories
+        else:
+            product_query = product_query.filter(Product.category == selected_category)
     else:
-        regular_products = Product.query.filter(
-            Product.is_active == True,
-            Product.category == selected_category
-        ).all()
+        if selected_category == '전체':
+            product_query = product_query.filter(~Product.category.in_(get_waste_category_names()))
+        else:
+            product_query = product_query.filter(Product.category == selected_category)
+
+    regular_products = product_query.all()
     regular_product_ids = [p.id for p in regular_products]
 
     # Get branches and jungsungs based on user role
@@ -3252,7 +3636,10 @@ def erp_tracking_admin():
         if not qty_dict:
             return 0
         if selected_category == '전체':
-            return sum(v for k, v in qty_dict.items() if k != '폐유')
+            if franchise_cat_names_admin:
+                valid_cats = set(franchise_cat_names_admin) - set(get_waste_category_names())
+                return sum(v for k, v in qty_dict.items() if k in valid_cats)
+            return sum(v for k, v in qty_dict.items() if k not in get_waste_category_names())
         return qty_dict.get(selected_category, 0)
 
     # --- Helper: batch query shipments and ERP, then build store data ---
@@ -3327,16 +3714,21 @@ def erp_tracking_admin():
             ERPRegistration.registration_date <= overall_end
         ).all()
 
-        # Build ERP lookup: {store_id: {date: total_qty}}
+        # Build ERP lookup and waste lookup
         erp_lookup = {}
+        waste_lookup = {}
         for reg in erp_rows:
             sid = reg.store_id
             rd = reg.registration_date
             if sid not in erp_lookup:
                 erp_lookup[sid] = {}
+            if sid not in waste_lookup:
+                waste_lookup[sid] = {}
             qty_dict = reg.get_category_quantities()
             total = erp_category_sum(qty_dict)
             erp_lookup[sid][rd] = erp_lookup[sid].get(rd, 0) + total
+            waste = sum(qty_dict.get(wc, 0) for wc in get_waste_category_names()) if qty_dict else 0
+            waste_lookup[sid][rd] = waste_lookup[sid].get(rd, 0) + waste
 
         # Build store data with period breakdowns
         result = []
@@ -3344,9 +3736,10 @@ def erp_tracking_admin():
             sid = store.id
             store_shipments = shipment_lookup.get(sid, {})
             store_erps = erp_lookup.get(sid, {})
+            store_wastes = waste_lookup.get(sid, {})
 
             period_results = []
-            totals = {'shipment': 0, 'erp': 0, 'unregistered': 0}
+            totals = {'shipment': 0, 'erp': 0, 'waste': 0, 'unregistered': 0}
 
             for period in periods:
                 p_start = period['start']
@@ -3364,16 +3757,24 @@ def erp_tracking_admin():
                     if p_start <= d <= p_end:
                         erp_qty += q
 
-                unreg = ship_qty - erp_qty if ship_qty > erp_qty else 0
+                # Sum waste for this period
+                waste_qty = 0
+                for d, q in store_wastes.items():
+                    if p_start <= d <= p_end:
+                        waste_qty += q
+
+                unreg = ship_qty - erp_qty
 
                 period_results.append({
                     'shipment': ship_qty,
                     'erp': erp_qty,
+                    'waste': waste_qty,
                     'unregistered': unreg
                 })
 
                 totals['shipment'] += ship_qty
                 totals['erp'] += erp_qty
+                totals['waste'] += waste_qty
                 totals['unregistered'] += unreg
 
             if totals['shipment'] > 0 or totals['erp'] > 0:
@@ -3388,6 +3789,36 @@ def erp_tracking_admin():
 
         return result
 
+    def group_by_franchise(data_list, period_key):
+        """Group store-level data by franchise, summing quantities."""
+        franchise_map = {}
+        for item in data_list:
+            f = item.get('franchise')
+            fid = f.id if f else 0
+            if fid not in franchise_map:
+                franchise_map[fid] = {
+                    'store': type('obj', (object,), {'name': f.name if f else '미지정'})(),
+                    'branch': item.get('branch'),
+                    'jungsung': None,
+                    'franchise': f,
+                    period_key: None,
+                    'totals': {'shipment': 0, 'erp': 0, 'waste': 0, 'unregistered': 0}
+                }
+            entry = franchise_map[fid]
+            # Initialize period data if first store
+            if entry[period_key] is None:
+                entry[period_key] = [{'shipment': 0, 'erp': 0, 'waste': 0, 'unregistered': 0} for _ in item[period_key]]
+            # Sum period data
+            for i, pd in enumerate(item[period_key]):
+                entry[period_key][i]['shipment'] += pd.get('shipment', 0)
+                entry[period_key][i]['erp'] += pd.get('erp', 0)
+                entry[period_key][i]['waste'] += pd.get('waste', 0)
+                entry[period_key][i]['unregistered'] += pd.get('unregistered', 0)
+            # Sum totals
+            for k in ('shipment', 'erp', 'waste', 'unregistered'):
+                entry['totals'][k] += item['totals'].get(k, 0)
+        return sorted(franchise_map.values(), key=lambda x: x['store'].name)
+
     # Get all stores once with eager loading
     stores_query = Store.query.filter_by(is_active=True).options(
         joinedload(Store.branch),
@@ -3396,6 +3827,25 @@ def erp_tracking_admin():
     )
     if not current_user.is_admin():
         stores_query = stores_query.filter_by(branch_id=current_user.branch_id)
+
+    # All stores for filter dropdown (before applying franchise/store filters)
+    all_stores_for_filter = stores_query.order_by(Store.franchise_id, Store.name).all()
+
+    # Build stores-by-franchise map for JS cascading
+    import json
+    stores_by_franchise_map = {}
+    for s in all_stores_for_filter:
+        fid = s.franchise_id or 0
+        if fid not in stores_by_franchise_map:
+            stores_by_franchise_map[fid] = []
+        stores_by_franchise_map[fid].append({'id': s.id, 'name': s.name})
+    stores_by_franchise_json = json.dumps(stores_by_franchise_map, ensure_ascii=False)
+
+    # Apply franchise/store filters
+    if franchise_filter:
+        stores_query = stores_query.filter(Store.franchise_id == franchise_filter)
+    if store_filter:
+        stores_query = stores_query.filter(Store.id == store_filter)
     stores = stores_query.order_by(Store.branch_id, Store.franchise_id, Store.name).all()
 
     # Build periods and data based on search type
@@ -3435,6 +3885,8 @@ def erp_tracking_admin():
         for item in raw_data:
             item['days'] = item.pop('period_data')
         daily_data = raw_data
+        if view_mode == 'franchise':
+            daily_data = group_by_franchise(daily_data, 'days')
 
     elif search_type == 'weekly':
         weeks = build_periods('weekly', year, month, None, None, None)
@@ -3445,6 +3897,8 @@ def erp_tracking_admin():
             for item in raw_data:
                 item['weeks'] = item.pop('period_data')
             weekly_data = raw_data
+            if view_mode == 'franchise':
+                weekly_data = group_by_franchise(weekly_data, 'weeks')
 
     elif search_type == 'monthly':
         months_list = [{'num': m, 'name': f'{m}월'} for m in range(1, 13)]
@@ -3456,6 +3910,8 @@ def erp_tracking_admin():
             for item in raw_data:
                 item['months'] = item.pop('period_data')
             monthly_data = raw_data
+            if view_mode == 'franchise':
+                monthly_data = group_by_franchise(monthly_data, 'months')
 
     elif search_type == 'period':
         periods = build_periods('period', year, month, date_from_parsed, date_to_parsed, view_type)
@@ -3466,6 +3922,8 @@ def erp_tracking_admin():
             for item in raw_data:
                 item['periods'] = item.pop('period_data')
             period_data = raw_data
+            if view_mode == 'franchise':
+                period_data = group_by_franchise(period_data, 'periods')
 
     return render_template('admin/erp_tracking_admin.html',
                            search_type=search_type,
@@ -3476,6 +3934,11 @@ def erp_tracking_admin():
                            view_type=view_type,
                            selected_category=selected_category,
                            all_categories=all_categories,
+                           view_mode=view_mode,
+                           franchise_filter=franchise_filter,
+                           store_filter=store_filter,
+                           all_stores_for_filter=all_stores_for_filter,
+                           stores_by_franchise_json=stores_by_franchise_json,
                            weekly_data=weekly_data,
                            weeks=weeks,
                            monthly_data=monthly_data,
@@ -3506,9 +3969,9 @@ def erp_registration():
         try:
             registration_date = datetime.strptime(selected_date, '%Y-%m-%d').date()
         except ValueError:
-            registration_date = date.today()
+            registration_date = kst_today()
     else:
-        registration_date = date.today()
+        registration_date = kst_today()
 
     # Get jungsung associated with this user
     jungsung = current_user.jungsung
@@ -3544,12 +4007,22 @@ def erp_registration():
     # Get active categories
     categories = Category.query.filter_by(is_active=True).order_by(Category.id).all()
 
+    # Build franchise -> allowed category names mapping
+    franchise_cat_names = {}
+    for fid, group in franchise_groups.items():
+        franchise = group['franchise']
+        if franchise:
+            franchise_cat_names[fid] = [cat.name for cat in franchise.categories]
+        else:
+            franchise_cat_names[fid] = []
+
     return render_template('admin/erp_registration.html',
                            registration_date=registration_date,
                            jungsung=jungsung,
                            franchise_groups=franchise_groups,
                            reg_by_store=reg_by_store,
-                           categories=categories)
+                           categories=categories,
+                           franchise_cat_names=franchise_cat_names)
 
 
 @admin_bp.route('/erp-registration/complete', methods=['POST'])
@@ -3680,22 +4153,73 @@ def erp_tracking_jungsung():
     selected_category = request.args.get('category', '전체')
     all_categories = Category.query.filter_by(is_active=True).order_by(Category.id).all()
 
+    # View mode: store or franchise
+    view_mode = request.args.get('view_mode', 'store')
+
+    # Franchise and store filters
+    franchise_filter = request.args.get('franchise_id', type=int)
+    store_filter = request.args.get('store_id', type=int)
+
     # Common: get stores and products
-    stores = Store.query.filter_by(
+    stores_query = Store.query.filter_by(
         jungsung_id=jungsung.id,
         is_active=True
-    ).order_by(Store.franchise_id, Store.name).all()
+    )
 
-    if selected_category == '전체':
-        regular_products = Product.query.filter(
-            Product.is_active == True,
-            Product.category != '폐유'
-        ).all()
+    # All stores for filter dropdown (before applying filters)
+    all_stores_for_filter = stores_query.order_by(Store.franchise_id, Store.name).all()
+
+    # Derive franchises from assigned stores
+    franchise_map_for_filter = {}
+    for s in all_stores_for_filter:
+        if s.franchise_id and s.franchise_id not in franchise_map_for_filter:
+            franchise_map_for_filter[s.franchise_id] = s.franchise
+
+    franchises = sorted(franchise_map_for_filter.values(), key=lambda f: f.name if f else '')
+
+    # Build stores-by-franchise map for JS cascading
+    import json
+    stores_by_franchise_map = {}
+    for s in all_stores_for_filter:
+        fid = s.franchise_id or 0
+        if fid not in stores_by_franchise_map:
+            stores_by_franchise_map[fid] = []
+        stores_by_franchise_map[fid].append({'id': s.id, 'name': s.name})
+    stores_by_franchise_json = json.dumps(stores_by_franchise_map, ensure_ascii=False)
+
+    # Apply franchise/store filters
+    if franchise_filter:
+        stores_query = stores_query.filter(Store.franchise_id == franchise_filter)
+    if store_filter:
+        stores_query = stores_query.filter(Store.id == store_filter)
+
+    stores = stores_query.order_by(Store.franchise_id, Store.name).all()
+
+    # Get products filtered by category (and by franchise_categories when franchise filter is applied)
+    franchise_cat_names_j = None  # used by erp_category_sum
+    product_query = Product.query.filter(Product.is_active == True)
+
+    if franchise_filter:
+        franchise_obj = Franchise.query.get(franchise_filter)
+        franchise_cat_names_j = [c.name for c in franchise_obj.categories] if franchise_obj and franchise_obj.categories else []
+        product_query = product_query.filter(Product.franchise_id == franchise_filter)
+        if selected_category == '전체':
+            if franchise_cat_names_j:
+                product_query = product_query.filter(
+                    Product.category.in_(franchise_cat_names_j),
+                    ~Product.category.in_(get_waste_category_names())
+                )
+            else:
+                product_query = product_query.filter(False)
+        else:
+            product_query = product_query.filter(Product.category == selected_category)
     else:
-        regular_products = Product.query.filter(
-            Product.is_active == True,
-            Product.category == selected_category
-        ).all()
+        if selected_category == '전체':
+            product_query = product_query.filter(~Product.category.in_(get_waste_category_names()))
+        else:
+            product_query = product_query.filter(Product.category == selected_category)
+
+    regular_products = product_query.all()
     regular_product_ids = [p.id for p in regular_products]
     store_ids = [s.id for s in stores]
 
@@ -3761,7 +4285,10 @@ def erp_tracking_jungsung():
         if not qty_dict:
             return 0
         if selected_category == '전체':
-            return sum(v for k, v in qty_dict.items() if k != '폐유')
+            if franchise_cat_names_j:
+                valid_cats = set(franchise_cat_names_j) - set(get_waste_category_names())
+                return sum(v for k, v in qty_dict.items() if k in valid_cats)
+            return sum(v for k, v in qty_dict.items() if k not in get_waste_category_names())
         return qty_dict.get(selected_category, 0)
 
     # Helper: build lookup dicts from batch data for time periods
@@ -3775,39 +4302,70 @@ def erp_tracking_jungsung():
                     shipment_lookup[key] = shipment_lookup.get(key, 0) + qty
                     break
 
-        # erp_lookup[(store_id, period_idx)] = qty
+        # erp_lookup[(store_id, period_idx)] = qty, waste_lookup[(store_id, period_idx)] = qty
         erp_lookup = {}
+        waste_lookup = {}
         for reg in erp_rows:
             for i, p in enumerate(time_periods):
                 if p['start'] <= reg.registration_date <= p['end']:
                     qty_dict = reg.get_category_quantities()
                     erp_qty = erp_category_sum(qty_dict)
+                    waste_qty = sum(qty_dict.get(wc, 0) for wc in get_waste_category_names()) if qty_dict else 0
+                    key = (reg.store_id, i)
                     if erp_qty:
-                        key = (reg.store_id, i)
                         erp_lookup[key] = erp_lookup.get(key, 0) + erp_qty
+                    if waste_qty:
+                        waste_lookup[key] = waste_lookup.get(key, 0) + waste_qty
                     break
 
-        return shipment_lookup, erp_lookup
+        return shipment_lookup, erp_lookup, waste_lookup
 
     # Helper: build store data from lookups
-    def build_store_data(time_periods, shipment_lookup, erp_lookup, period_key):
+    def build_store_data(time_periods, shipment_lookup, erp_lookup, waste_lookup, period_key):
         result = []
         for store in stores:
             store_data = {
                 'store': store, 'franchise': store.franchise,
-                period_key: [], 'totals': {'shipment': 0, 'erp': 0, 'unregistered': 0}
+                period_key: [], 'totals': {'shipment': 0, 'erp': 0, 'waste': 0, 'unregistered': 0}
             }
             for i in range(len(time_periods)):
                 s_qty = shipment_lookup.get((store.id, i), 0)
                 e_qty = erp_lookup.get((store.id, i), 0)
-                unreg = s_qty - e_qty if s_qty > e_qty else 0
-                store_data[period_key].append({'shipment': s_qty, 'erp': e_qty, 'unregistered': unreg})
+                w_qty = waste_lookup.get((store.id, i), 0)
+                unreg = s_qty - e_qty
+                store_data[period_key].append({'shipment': s_qty, 'erp': e_qty, 'waste': w_qty, 'unregistered': unreg})
                 store_data['totals']['shipment'] += s_qty
                 store_data['totals']['erp'] += e_qty
+                store_data['totals']['waste'] += w_qty
                 store_data['totals']['unregistered'] += unreg
             if store_data['totals']['shipment'] > 0 or store_data['totals']['erp'] > 0:
                 result.append(store_data)
         return result
+
+    # Helper: group store-level data by franchise
+    def group_by_franchise(data_list, period_key):
+        franchise_map = {}
+        for item in data_list:
+            f = item.get('franchise')
+            fid = f.id if f else 0
+            if fid not in franchise_map:
+                franchise_map[fid] = {
+                    'store': type('obj', (object,), {'name': f.name if f else '미지정'})(),
+                    'franchise': f,
+                    period_key: None,
+                    'totals': {'shipment': 0, 'erp': 0, 'waste': 0, 'unregistered': 0}
+                }
+            entry = franchise_map[fid]
+            if entry[period_key] is None:
+                entry[period_key] = [{'shipment': 0, 'erp': 0, 'waste': 0, 'unregistered': 0} for _ in item[period_key]]
+            for i, pd in enumerate(item[period_key]):
+                entry[period_key][i]['shipment'] += pd.get('shipment', 0)
+                entry[period_key][i]['erp'] += pd.get('erp', 0)
+                entry[period_key][i]['waste'] += pd.get('waste', 0)
+                entry[period_key][i]['unregistered'] += pd.get('unregistered', 0)
+            for k in ('shipment', 'erp', 'waste', 'unregistered'):
+                entry['totals'][k] += item['totals'].get(k, 0)
+        return sorted(franchise_map.values(), key=lambda x: x['store'].name)
 
     # Helper: group stores by franchise
     def get_franchise_dict():
@@ -3821,10 +4379,11 @@ def erp_tracking_jungsung():
     # ========================================
     # 1. 날짜별 (Daily) - single date view (original)
     # ========================================
-    filter_date = date.today()
+    filter_date = kst_today()
     franchise_groups = []
     total_shipment = 0
     total_erp_registered = 0
+    total_waste = 0
     total_unregistered = 0
 
     if search_type == 'daily':
@@ -3833,7 +4392,7 @@ def erp_tracking_jungsung():
             try:
                 filter_date = datetime.strptime(selected_date, '%Y-%m-%d').date()
             except ValueError:
-                filter_date = date.today()
+                filter_date = kst_today()
 
         # Batch: 2 queries total instead of 2 per store
         shipment_rows = batch_shipments(filter_date, filter_date)
@@ -3843,11 +4402,15 @@ def erp_tracking_jungsung():
         for store_id, _, qty in shipment_rows:
             shipment_by_store[store_id] = shipment_by_store.get(store_id, 0) + qty
         erp_by_store = {}
+        waste_by_store = {}
         for reg in erp_rows:
             qty_dict = reg.get_category_quantities()
             erp_qty = erp_category_sum(qty_dict)
+            waste_qty = sum(qty_dict.get(wc, 0) for wc in get_waste_category_names()) if qty_dict else 0
             if erp_qty:
                 erp_by_store[reg.store_id] = erp_by_store.get(reg.store_id, 0) + erp_qty
+            if waste_qty:
+                waste_by_store[reg.store_id] = waste_by_store.get(reg.store_id, 0) + waste_qty
 
         franchise_dict = get_franchise_dict()
         for fid, group in franchise_dict.items():
@@ -3855,15 +4418,24 @@ def erp_tracking_jungsung():
             for store in group['stores']:
                 s_qty = shipment_by_store.get(store.id, 0)
                 e_qty = erp_by_store.get(store.id, 0)
+                w_qty = waste_by_store.get(store.id, 0)
                 unreg = s_qty - e_qty
                 group_data['stores'].append({
                     'store': store, 'shipment': s_qty,
-                    'erp_registered': e_qty, 'unregistered': unreg
+                    'erp_registered': e_qty, 'waste': w_qty, 'unregistered': unreg
                 })
                 total_shipment += s_qty
                 total_erp_registered += e_qty
+                total_waste += w_qty
                 total_unregistered += unreg
             franchise_groups.append(group_data)
+
+        # Add per-group totals for franchise view_mode
+        for group_data in franchise_groups:
+            group_data['total_shipment'] = sum(s['shipment'] for s in group_data['stores'])
+            group_data['total_erp'] = sum(s['erp_registered'] for s in group_data['stores'])
+            group_data['total_waste'] = sum(s['waste'] for s in group_data['stores'])
+            group_data['total_unregistered'] = sum(s['unregistered'] for s in group_data['stores'])
 
     # ========================================
     # 1.5. 일별 달력 (Daily Calendar) - Mon-Sun columns per week
@@ -3874,8 +4446,8 @@ def erp_tracking_jungsung():
     daily_week_num = 1
 
     if search_type == 'calendar':
-        year = request.args.get('year', type=int) or date.today().year
-        month = request.args.get('month', type=int) or date.today().month
+        year = request.args.get('year', type=int) or kst_today().year
+        month = request.args.get('month', type=int) or kst_today().month
 
         # Build weeks for the month (Mon-Sun aligned)
         daily_weeks = build_month_weeks(year, month)
@@ -3899,14 +4471,16 @@ def erp_tracking_jungsung():
         day_periods = [{'start': d['date'], 'end': d['date']} for d in daily_days]
         s_rows = batch_shipments(selected_week['start'], selected_week['end'])
         e_rows = batch_erp(selected_week['start'], selected_week['end'])
-        s_lookup, e_lookup = build_period_lookups(day_periods, s_rows, e_rows)
-        daily_data = build_store_data(day_periods, s_lookup, e_lookup, 'days')
+        s_lookup, e_lookup, w_lookup = build_period_lookups(day_periods, s_rows, e_rows)
+        daily_data = build_store_data(day_periods, s_lookup, e_lookup, w_lookup, 'days')
+        if view_mode == 'franchise':
+            daily_data = group_by_franchise(daily_data, 'days')
 
     # ========================================
     # 2. 주별 (Weekly) - year/month, weekly breakdown
     # ========================================
-    year = request.args.get('year', type=int) or date.today().year
-    month = request.args.get('month', type=int) or date.today().month
+    year = request.args.get('year', type=int) or kst_today().year
+    month = request.args.get('month', type=int) or kst_today().month
     weekly_data = []
     weeks = []
 
@@ -3918,8 +4492,10 @@ def erp_tracking_jungsung():
         overall_end = date(year, month, last_day_num)
         s_rows = batch_shipments(overall_start, overall_end)
         e_rows = batch_erp(overall_start, overall_end)
-        s_lookup, e_lookup = build_period_lookups(weeks, s_rows, e_rows)
-        weekly_data = build_store_data(weeks, s_lookup, e_lookup, 'weeks')
+        s_lookup, e_lookup, w_lookup = build_period_lookups(weeks, s_rows, e_rows)
+        weekly_data = build_store_data(weeks, s_lookup, e_lookup, w_lookup, 'weeks')
+        if view_mode == 'franchise':
+            weekly_data = group_by_franchise(weekly_data, 'weeks')
 
     # ========================================
     # 3. 월별 (Monthly) - year, 12 months breakdown
@@ -3938,8 +4514,10 @@ def erp_tracking_jungsung():
 
         s_rows = batch_shipments(date(year, 1, 1), date(year, 12, 31))
         e_rows = batch_erp(date(year, 1, 1), date(year, 12, 31))
-        s_lookup, e_lookup = build_period_lookups(month_periods, s_rows, e_rows)
-        monthly_data = build_store_data(month_periods, s_lookup, e_lookup, 'months')
+        s_lookup, e_lookup, w_lookup = build_period_lookups(month_periods, s_rows, e_rows)
+        monthly_data = build_store_data(month_periods, s_lookup, e_lookup, w_lookup, 'months')
+        if view_mode == 'franchise':
+            monthly_data = group_by_franchise(monthly_data, 'months')
 
     # ========================================
     # 4. 기간 (Period) - date range + view type
@@ -4003,19 +4581,28 @@ def erp_tracking_jungsung():
 
         s_rows = batch_shipments(date_from_parsed, date_to_parsed)
         e_rows = batch_erp(date_from_parsed, date_to_parsed)
-        s_lookup, e_lookup = build_period_lookups(periods, s_rows, e_rows)
-        period_data = build_store_data(periods, s_lookup, e_lookup, 'periods')
+        s_lookup, e_lookup, w_lookup = build_period_lookups(periods, s_rows, e_rows)
+        period_data = build_store_data(periods, s_lookup, e_lookup, w_lookup, 'periods')
+        if view_mode == 'franchise':
+            period_data = group_by_franchise(period_data, 'periods')
 
     return render_template('admin/erp_tracking_jungsung.html',
                            search_type=search_type,
                            jungsung=jungsung,
                            selected_category=selected_category,
                            all_categories=all_categories,
+                           view_mode=view_mode,
+                           franchise_filter=franchise_filter,
+                           store_filter=store_filter,
+                           franchises=franchises,
+                           all_stores_for_filter=all_stores_for_filter,
+                           stores_by_franchise_json=stores_by_franchise_json,
                            # daily
                            filter_date=filter_date,
                            franchise_groups=franchise_groups,
                            total_shipment=total_shipment,
                            total_erp_registered=total_erp_registered,
+                           total_waste=total_waste,
                            total_unregistered=total_unregistered,
                            # calendar
                            daily_data=daily_data,
@@ -4049,8 +4636,8 @@ def erp_tracking_franchise():
     all_categories = Category.query.filter_by(is_active=True).order_by(Category.id).all()
 
     # Get filter parameters
-    year = request.args.get('year', type=int) or date.today().year
-    month = request.args.get('month', type=int) or date.today().month
+    year = request.args.get('year', type=int) or kst_today().year
+    month = request.args.get('month', type=int) or kst_today().month
 
     # Period search parameters
     date_from = request.args.get('date_from')
@@ -4073,15 +4660,27 @@ def erp_tracking_franchise():
         flash('연결된 프랜차이즈 정보가 없습니다. 관리자에게 문의하세요.', 'danger')
         return redirect(url_for('dashboard.franchise'))
 
-    # Get active products filtered by category
+    # Get franchise's valid categories from franchise_categories table
+    franchise_cat_names = [c.name for c in franchise.categories] if franchise.categories else []
+
+    # Filter all_categories to only show this franchise's categories
+    all_categories = [c for c in all_categories if c.name in franchise_cat_names]
+
+    # Get active products filtered by category AND franchise
     if selected_category == '전체':
-        regular_products = Product.query.filter(
-            Product.is_active == True,
-            Product.category != '폐유'
-        ).all()
+        if franchise_cat_names:
+            regular_products = Product.query.filter(
+                Product.is_active == True,
+                Product.franchise_id == franchise.id,
+                Product.category.in_(franchise_cat_names),
+                ~Product.category.in_(get_waste_category_names())
+            ).all()
+        else:
+            regular_products = []
     else:
         regular_products = Product.query.filter(
             Product.is_active == True,
+            Product.franchise_id == franchise.id,
             Product.category == selected_category
         ).all()
     regular_product_ids = [p.id for p in regular_products]
@@ -4091,14 +4690,24 @@ def erp_tracking_franchise():
         if not qty_dict:
             return 0
         if selected_category == '전체':
-            return sum(v for k, v in qty_dict.items() if k != '폐유')
+            valid_cats = set(franchise_cat_names) - set(get_waste_category_names())
+            return sum(v for k, v in qty_dict.items() if k in valid_cats)
         return qty_dict.get(selected_category, 0)
 
+    # Store filter
+    store_filter = request.args.get('store_id', type=int)
+
     # Get stores belonging to this franchise
-    stores = Store.query.filter_by(
+    stores_query = Store.query.filter_by(
         franchise_id=franchise.id,
         is_active=True
-    ).order_by(Store.name).all()
+    )
+    # All stores for dropdown (before filtering)
+    all_stores_for_filter = stores_query.order_by(Store.name).all()
+
+    if store_filter:
+        stores_query = stores_query.filter(Store.id == store_filter)
+    stores = stores_query.order_by(Store.name).all()
 
     # Pre-compute jungsung-level shipments for this franchise's stores
     # These are ShipmentItems with jungsung_id but no store_id
@@ -4166,7 +4775,7 @@ def erp_tracking_franchise():
             store_data = {
                 'store': store,
                 'days': [],
-                'totals': {'shipment': 0, 'erp': 0, 'unregistered': 0}
+                'totals': {'shipment': 0, 'erp': 0, 'waste': 0, 'unregistered': 0}
             }
 
             for day_info in daily_days:
@@ -4186,20 +4795,24 @@ def erp_tracking_franchise():
                 ).all()
 
                 erp_qty = 0
+                waste_qty = 0
                 for reg in erp_regs:
                     qty_dict = reg.get_category_quantities()
                     erp_qty += erp_category_sum(qty_dict)
+                    waste_qty += sum(qty_dict.get(wc, 0) for wc in get_waste_category_names()) if qty_dict else 0
 
-                unregistered = shipment_qty - erp_qty if shipment_qty > erp_qty else 0
+                unregistered = shipment_qty - erp_qty
 
                 store_data['days'].append({
                     'shipment': shipment_qty,
                     'erp': erp_qty,
+                    'waste': waste_qty,
                     'unregistered': unregistered
                 })
 
                 store_data['totals']['shipment'] += shipment_qty
                 store_data['totals']['erp'] += erp_qty
+                store_data['totals']['waste'] += waste_qty
                 store_data['totals']['unregistered'] += unregistered
 
             if store_data['totals']['shipment'] > 0 or store_data['totals']['erp'] > 0:
@@ -4219,12 +4832,10 @@ def erp_tracking_franchise():
             store_data = {
                 'store': store,
                 'weeks': [],
-                'totals': {'shipment': 0, 'erp': 0, 'unregistered': 0}
+                'totals': {'shipment': 0, 'erp': 0, 'waste': 0, 'unregistered': 0}
             }
 
-            # For each week, calculate shipment, ERP, and unregistered
             for week in weeks:
-                # Shipment quantity for this store in this week
                 shipment_qty = db.session.query(func.sum(ShipmentItem.quantity)).filter(
                     ShipmentItem.is_active == True,
                     ShipmentItem.store_id == store.id,
@@ -4234,7 +4845,6 @@ def erp_tracking_franchise():
                 ).scalar() or 0
                 shipment_qty += get_jungsung_shipment_extra(store, week['start'], week['end'])
 
-                # ERP registration quantity for this store in this week
                 erp_regs = ERPRegistration.query.filter(
                     ERPRegistration.store_id == store.id,
                     ERPRegistration.is_return == False,
@@ -4243,23 +4853,26 @@ def erp_tracking_franchise():
                 ).all()
 
                 erp_qty = 0
+                waste_qty = 0
                 for reg in erp_regs:
                     qty_dict = reg.get_category_quantities()
                     erp_qty += erp_category_sum(qty_dict)
+                    waste_qty += sum(qty_dict.get(wc, 0) for wc in get_waste_category_names()) if qty_dict else 0
 
-                unregistered = shipment_qty - erp_qty if shipment_qty > erp_qty else 0
+                unregistered = shipment_qty - erp_qty
 
                 store_data['weeks'].append({
                     'shipment': shipment_qty,
                     'erp': erp_qty,
+                    'waste': waste_qty,
                     'unregistered': unregistered
                 })
 
                 store_data['totals']['shipment'] += shipment_qty
                 store_data['totals']['erp'] += erp_qty
+                store_data['totals']['waste'] += waste_qty
                 store_data['totals']['unregistered'] += unregistered
 
-            # Only include stores with data
             if store_data['totals']['shipment'] > 0 or store_data['totals']['erp'] > 0:
                 weekly_data.append(store_data)
 
@@ -4276,15 +4889,13 @@ def erp_tracking_franchise():
             store_data = {
                 'store': store,
                 'months': [],
-                'totals': {'shipment': 0, 'erp': 0, 'unregistered': 0}
+                'totals': {'shipment': 0, 'erp': 0, 'waste': 0, 'unregistered': 0}
             }
 
-            # For each month, calculate shipment, ERP, and unregistered
             for m in range(1, 13):
                 first_day = date(year, m, 1)
                 last_day = date(year, m, monthrange(year, m)[1])
 
-                # Shipment quantity for this store in this month
                 shipment_qty = db.session.query(func.sum(ShipmentItem.quantity)).filter(
                     ShipmentItem.is_active == True,
                     ShipmentItem.store_id == store.id,
@@ -4294,7 +4905,6 @@ def erp_tracking_franchise():
                 ).scalar() or 0
                 shipment_qty += get_jungsung_shipment_extra(store, first_day, last_day)
 
-                # ERP registration quantity for this store in this month
                 erp_regs = ERPRegistration.query.filter(
                     ERPRegistration.store_id == store.id,
                     ERPRegistration.is_return == False,
@@ -4303,23 +4913,26 @@ def erp_tracking_franchise():
                 ).all()
 
                 erp_qty = 0
+                waste_qty = 0
                 for reg in erp_regs:
                     qty_dict = reg.get_category_quantities()
                     erp_qty += erp_category_sum(qty_dict)
+                    waste_qty += sum(qty_dict.get(wc, 0) for wc in get_waste_category_names()) if qty_dict else 0
 
-                unregistered = shipment_qty - erp_qty if shipment_qty > erp_qty else 0
+                unregistered = shipment_qty - erp_qty
 
                 store_data['months'].append({
                     'shipment': shipment_qty,
                     'erp': erp_qty,
+                    'waste': waste_qty,
                     'unregistered': unregistered
                 })
 
                 store_data['totals']['shipment'] += shipment_qty
                 store_data['totals']['erp'] += erp_qty
+                store_data['totals']['waste'] += waste_qty
                 store_data['totals']['unregistered'] += unregistered
 
-            # Only include stores with data
             if store_data['totals']['shipment'] > 0 or store_data['totals']['erp'] > 0:
                 monthly_data.append(store_data)
 
@@ -4416,12 +5029,10 @@ def erp_tracking_franchise():
             store_data = {
                 'store': store,
                 'periods': [],
-                'totals': {'shipment': 0, 'erp': 0, 'unregistered': 0}
+                'totals': {'shipment': 0, 'erp': 0, 'waste': 0, 'unregistered': 0}
             }
 
-            # For each period, calculate shipment, ERP, and unregistered
             for period in periods:
-                # Shipment quantity for this store in this period
                 shipment_qty = db.session.query(func.sum(ShipmentItem.quantity)).filter(
                     ShipmentItem.is_active == True,
                     ShipmentItem.store_id == store.id,
@@ -4431,7 +5042,6 @@ def erp_tracking_franchise():
                 ).scalar() or 0
                 shipment_qty += get_jungsung_shipment_extra(store, period['start'], period['end'])
 
-                # ERP registration quantity for this store in this period
                 erp_regs = ERPRegistration.query.filter(
                     ERPRegistration.store_id == store.id,
                     ERPRegistration.is_return == False,
@@ -4440,23 +5050,26 @@ def erp_tracking_franchise():
                 ).all()
 
                 erp_qty = 0
+                waste_qty = 0
                 for reg in erp_regs:
                     qty_dict = reg.get_category_quantities()
                     erp_qty += erp_category_sum(qty_dict)
+                    waste_qty += sum(qty_dict.get(wc, 0) for wc in get_waste_category_names()) if qty_dict else 0
 
-                unregistered = shipment_qty - erp_qty if shipment_qty > erp_qty else 0
+                unregistered = shipment_qty - erp_qty
 
                 store_data['periods'].append({
                     'shipment': shipment_qty,
                     'erp': erp_qty,
+                    'waste': waste_qty,
                     'unregistered': unregistered
                 })
 
                 store_data['totals']['shipment'] += shipment_qty
                 store_data['totals']['erp'] += erp_qty
+                store_data['totals']['waste'] += waste_qty
                 store_data['totals']['unregistered'] += unregistered
 
-            # Only include stores with data
             if store_data['totals']['shipment'] > 0 or store_data['totals']['erp'] > 0:
                 period_data.append(store_data)
 
@@ -4479,7 +5092,9 @@ def erp_tracking_franchise():
                            months_list=months_list,
                            period_data=period_data,
                            periods=periods,
-                           franchise=franchise)
+                           franchise=franchise,
+                           store_filter=store_filter,
+                           all_stores_for_filter=all_stores_for_filter)
 
 
 # ============================================
@@ -4496,8 +5111,8 @@ def monthly_closing_franchise():
     from calendar import monthrange
 
     search_type = request.args.get('search_type', 'monthly')
-    year = request.args.get('year', type=int) or date.today().year
-    month = request.args.get('month', type=int) or date.today().month
+    year = request.args.get('year', type=int) or kst_today().year
+    month = request.args.get('month', type=int) or kst_today().month
 
     # Period search parameters
     date_from = request.args.get('date_from')
@@ -4538,8 +5153,8 @@ def monthly_closing_franchise():
         for reg in regs:
             qty_dict = reg.get_category_quantities()
             if qty_dict:
-                stockin += sum(v for k, v in qty_dict.items() if k != '폐유')
-                waste += qty_dict.get('폐유', 0)
+                stockin += sum(v for k, v in qty_dict.items() if k not in get_waste_category_names())
+                waste += sum(qty_dict.get(wc, 0) for wc in get_waste_category_names())
         return stockin, waste
 
     # Helper: build store data for a list of periods
@@ -4680,7 +5295,7 @@ def calculate_store_status(store_id):
     - uncollected_waste_oil: No waste oil (폐유) registered in the last 2 months
     """
     from datetime import date
-    two_months_ago = date.today() - timedelta(days=60)
+    two_months_ago = kst_today() - timedelta(days=60)
 
     store = Store.query.get(store_id)
     if not store:
@@ -4701,14 +5316,14 @@ def calculate_store_status(store_id):
         ERPRegistration.registration_date >= two_months_ago
     ).all()
     has_stockin = any(
-        sum(v for k, v in reg.get_category_quantities().items() if k != '폐유') > 0
+        sum(v for k, v in reg.get_category_quantities().items() if k not in get_waste_category_names()) > 0
         for reg in recent_regs
     )
     store.unused_store = not has_stockin
 
     # Check uncollected_waste_oil - no waste oil (폐유) registered in last 2 months
     has_waste = any(
-        reg.get_category_quantities().get('폐유', 0) > 0
+        sum(reg.get_category_quantities().get(wc, 0) for wc in get_waste_category_names()) > 0
         for reg in recent_regs
     )
     store.uncollected_waste_oil = not has_waste

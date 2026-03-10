@@ -89,7 +89,7 @@
         <h6 class="mb-0">
             <i class="bi bi-boxes text-primary"></i> 품목별 재고 현황
         </h6>
-        <a href="{{ url_for('admin.inventory_status') }}" class="btn btn-sm btn-outline-primary">상세보기</a>
+        <a href="{{ url_for('admin.branch_inventory') }}" class="btn btn-sm btn-outline-primary">상세보기</a>
     </div>
     <div class="card-body p-0">
         <div class="table-responsive">
@@ -145,21 +145,21 @@
         <div class="card shadow-sm h-100">
             <div class="card-header bg-white">
                 <h6 class="mb-0">
-                    <i class="bi bi-calendar-day text-primary"></i> 오늘의 활동
+                    <i class="bi bi-calendar-day text-primary"></i> 어제 입출고
                 </h6>
             </div>
             <div class="card-body">
                 <div class="row g-3">
                     <div class="col-6">
                         <div class="border-start border-primary border-4 ps-3">
-                            <p class="text-muted mb-1 small">오늘 입고</p>
-                            <h4 class="mb-0 text-primary">{{ "{:,}".format(today_stockins) }}</h4>
+                            <p class="text-muted mb-1 small">어제 입고</p>
+                            <h4 class="mb-0 text-primary">{{ "{:,}".format(yesterday_stockins) }}</h4>
                         </div>
                     </div>
                     <div class="col-6">
                         <div class="border-start border-success border-4 ps-3">
-                            <p class="text-muted mb-1 small">오늘 출고</p>
-                            <h4 class="mb-0 text-success">{{ "{:,}".format(today_shipments) }}</h4>
+                            <p class="text-muted mb-1 small">어제 출고</p>
+                            <h4 class="mb-0 text-success">{{ "{:,}".format(yesterday_shipments) }}</h4>
                         </div>
                     </div>
                 </div>
@@ -227,7 +227,7 @@
                 </a>
             </div>
             <div class="col-lg-3 col-md-6">
-                <a href="{{ url_for('admin.inventory_status') }}" class="text-decoration-none">
+                <a href="{{ url_for('admin.branch_inventory') }}" class="text-decoration-none">
                     <div class="card quick-action-card shadow-sm h-100">
                         <div class="card-body text-center">
                             <div class="mb-3">

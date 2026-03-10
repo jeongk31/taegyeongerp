@@ -48,7 +48,8 @@
 <!-- Main Stats -->
 <div class="row g-3 mb-4">
     <div class="col-xl-3 col-md-6">
-        <div class="card dashboard-stat-card shadow-sm" style="border-left-color: #0d6efd;">
+        <a href="{{ url_for('admin.store_status_list') }}" class="text-decoration-none">
+        <div class="card dashboard-stat-card shadow-sm" style="border-left-color: #0d6efd; cursor: pointer;">
             <div class="card-body">
                 <div class="d-flex justify-content-between align-items-start mb-2">
                     <div>
@@ -61,14 +62,16 @@
                 </div>
             </div>
         </div>
+        </a>
     </div>
     <div class="col-xl-3 col-md-6">
-        <div class="card dashboard-stat-card shadow-sm" style="border-left-color: #198754;">
+        <a href="{{ url_for('admin.erp_registration') }}" class="text-decoration-none">
+        <div class="card dashboard-stat-card shadow-sm" style="border-left-color: #198754; cursor: pointer;">
             <div class="card-body">
                 <div class="d-flex justify-content-between align-items-start mb-2">
                     <div>
-                        <p class="text-muted mb-1 small">오늘 등록</p>
-                        <div class="stat-number text-success">{{ "{:,}".format(today_registrations) }}</div>
+                        <p class="text-muted mb-1 small">오늘 ERP 등록 <small class="text-warning">(폐유제외)</small></p>
+                        <div class="stat-number text-success">{{ "{:,}".format(today_erp_total) }}</div>
                     </div>
                     <div class="p-3 bg-success bg-opacity-10 rounded">
                         <i class="bi bi-clipboard-check fs-4 text-success"></i>
@@ -76,24 +79,11 @@
                 </div>
             </div>
         </div>
+        </a>
     </div>
     <div class="col-xl-3 col-md-6">
-        <div class="card dashboard-stat-card shadow-sm" style="border-left-color: #0dcaf0;">
-            <div class="card-body">
-                <div class="d-flex justify-content-between align-items-start mb-2">
-                    <div>
-                        <p class="text-muted mb-1 small">오늘 입고량</p>
-                        <div class="stat-number text-info">{{ "{:,}".format(today_stockin_qty) }}</div>
-                    </div>
-                    <div class="p-3 bg-info bg-opacity-10 rounded">
-                        <i class="bi bi-box-arrow-in-down fs-4 text-info"></i>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-    <div class="col-xl-3 col-md-6">
-        <div class="card dashboard-stat-card shadow-sm" style="border-left-color: #dc3545;">
+        <a href="{{ url_for('admin.erp_registration') }}" class="text-decoration-none">
+        <div class="card dashboard-stat-card shadow-sm" style="border-left-color: #dc3545; cursor: pointer;">
             <div class="card-body">
                 <div class="d-flex justify-content-between align-items-start mb-2">
                     <div>
@@ -102,6 +92,22 @@
                     </div>
                     <div class="p-3 bg-danger bg-opacity-10 rounded">
                         <i class="bi bi-trash fs-4 text-danger"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+        </a>
+    </div>
+    <div class="col-xl-3 col-md-6">
+        <div class="card dashboard-stat-card shadow-sm" style="border-left-color: #0dcaf0; cursor: pointer;" data-bs-toggle="modal" data-bs-target="#yesterdayStockinModal">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-start mb-2">
+                    <div>
+                        <p class="text-muted mb-1 small">전일 입고량 <small>({{ yesterday.strftime('%m/%d') }})</small></p>
+                        <div class="stat-number text-info">{{ "{:,}".format(yesterday_stockin_qty) }}</div>
+                    </div>
+                    <div class="p-3 bg-info bg-opacity-10 rounded">
+                        <i class="bi bi-box-arrow-in-down fs-4 text-info"></i>
                     </div>
                 </div>
             </div>
@@ -122,20 +128,20 @@
                 <div class="row g-3">
                     <div class="col-md-4">
                         <div class="border-start border-success border-4 ps-3">
-                            <p class="text-muted mb-1 small">이번 달 총 등록</p>
-                            <h4 class="mb-0 text-success">{{ "{:,}".format(month_registrations) }}건</h4>
+                            <p class="text-muted mb-1 small">이번 달 총 ERP 등록</p>
+                            <h4 class="mb-0 text-success">{{ "{:,}".format(month_erp_total) }}</h4>
                         </div>
                     </div>
                     <div class="col-md-4">
                         <div class="border-start border-primary border-4 ps-3">
                             <p class="text-muted mb-1 small">평균 등록 (일)</p>
-                            <h4 class="mb-0 text-primary">{{ "%.1f"|format(month_registrations / 30 if month_registrations > 0 else 0) }}건</h4>
+                            <h4 class="mb-0 text-primary">{{ "%.1f"|format(month_erp_total / 30 if month_erp_total > 0 else 0) }}</h4>
                         </div>
                     </div>
                     <div class="col-md-4">
                         <div class="border-start border-info border-4 ps-3">
                             <p class="text-muted mb-1 small">등록률</p>
-                            <h4 class="mb-0 text-info">{{ "%.0f"|format((today_registrations / store_count * 100) if store_count > 0 else 0) }}%</h4>
+                            <h4 class="mb-0 text-info">{{ "%.0f"|format((today_erp_total / store_count * 100) if store_count > 0 else 0) }}%</h4>
                         </div>
                     </div>
                 </div>
@@ -224,9 +230,16 @@
                                 <td>{{ reg.registration_date.strftime('%Y-%m-%d') if reg.registration_date else '-' }}</td>
                                 <td>{{ reg.store.name if reg.store else '-' }}</td>
                                 {% set qty_dict = reg.get_category_quantities() %}
-                                {% set stockin_total = qty_dict.values()|sum - (qty_dict.get('폐유', 0)) %}
-                                <td><span class="badge bg-info">{{ "{:,}".format(stockin_total|int) }}</span></td>
-                                <td><span class="badge bg-danger">{{ "{:,}".format(qty_dict.get('폐유', 0)|int) }}</span></td>
+                                {% set ns = namespace(waste=0, stockin=0) %}
+                                {% for k, v in qty_dict.items() %}
+                                    {% if k in waste_category_names %}
+                                        {% set ns.waste = ns.waste + v %}
+                                    {% else %}
+                                        {% set ns.stockin = ns.stockin + v %}
+                                    {% endif %}
+                                {% endfor %}
+                                <td><span class="badge bg-info">{{ "{:,}".format(ns.stockin|int) }}</span></td>
+                                <td><span class="badge bg-danger">{{ "{:,}".format(ns.waste|int) }}</span></td>
                                 <td>
                                     {% if reg.is_return %}
                                     <span class="badge bg-warning">반품</span>
@@ -290,6 +303,48 @@
                     </div>
                     {% endfor %}
                 </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 전일 입고량 상세 모달 -->
+<div class="modal fade" id="yesterdayStockinModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h6 class="modal-title">전일 입고량 상세 ({{ yesterday.strftime('%Y-%m-%d') }})</h6>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body p-0">
+                <table class="table table-sm table-hover mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th>매장명</th>
+                            <th class="text-end">입고량</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for item in yesterday_stockin_detail %}
+                        <tr>
+                            <td>{{ item.store_name }}</td>
+                            <td class="text-end"><span class="badge bg-info">{{ "{:,}".format(item.qty) }}</span></td>
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="2" class="text-center text-muted py-3">전일 입고 데이터가 없습니다.</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                    {% if yesterday_stockin_detail %}
+                    <tfoot class="table-light">
+                        <tr>
+                            <th>합계</th>
+                            <th class="text-end"><span class="badge bg-primary">{{ "{:,}".format(yesterday_stockin_qty) }}</span></th>
+                        </tr>
+                    </tfoot>
+                    {% endif %}
+                </table>
             </div>
         </div>
     </div>
