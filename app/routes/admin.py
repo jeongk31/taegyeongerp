@@ -716,10 +716,10 @@ def franchises_add():
 
         franchise = Franchise(
             name=name,
-            code=code,
-            address=address,
-            phone=phone,
-            contact_person=contact_person
+            code=code or None,
+            address=address or None,
+            phone=phone or None,
+            contact_person=contact_person or None
         )
         db.session.add(franchise)
         db.session.flush()
@@ -852,10 +852,10 @@ def franchises_add_modal():
 
     franchise = Franchise(
         name=name,
-        code=code,
-        address=address,
-        phone=phone,
-        contact_person=contact_person
+        code=code or None,
+        address=address or None,
+        phone=phone or None,
+        contact_person=contact_person or None
     )
     db.session.add(franchise)
     db.session.flush()
