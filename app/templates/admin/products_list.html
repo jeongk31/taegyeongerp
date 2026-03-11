@@ -100,10 +100,7 @@
                     <div class="mb-3">
                         <label class="form-label">프랜차이즈 <span class="required">*</span></label>
                         <select name="franchise_id" id="modal_franchise_id" class="form-select" required>
-                            <option value="">선택</option>
-                            {% for franchise in franchises %}
-                            <option value="{{ franchise.id }}">{{ franchise.name }}</option>
-                            {% endfor %}
+                            <option value="">품목을 먼저 선택하세요</option>
                         </select>
                     </div>
                     <div class="mb-3">
@@ -128,6 +125,36 @@
 <script>
 const addUrl = "{{ url_for('admin.products_add') }}";
 
+// Category → Franchise mapping
+const categoryFranchises = {
+    {% for cat in categories %}
+    {{ cat.name|tojson }}: [
+        {% for f in cat.franchises %}
+        { id: {{ f.id }}, name: {{ f.name|tojson }} },
+        {% endfor %}
+    ],
+    {% endfor %}
+};
+
+// All franchises (fallback)
+const allFranchises = [
+    {% for franchise in franchises %}
+    { id: {{ franchise.id }}, name: {{ franchise.name|tojson }} },
+    {% endfor %}
+];
+
+document.getElementById('modal_category').addEventListener('change', function() {
+    const sel = document.getElementById('modal_franchise_id');
+    const cat = this.value;
+    sel.innerHTML = '';
+    const list = cat && categoryFranchises[cat] ? categoryFranchises[cat] : [];
+    if (list.length === 0) {
+        sel.innerHTML = '<option value="">품목을 먼저 선택하세요</option>';
+    } else {
+        sel.innerHTML = '<option value="">선택</option>' + list.map(f => `<option value="${f.id}">${f.name}</option>`).join('');
+    }
+});
+
 function sortTable(value) {
     const [sort, order] = value.split('-');
     window.location.href = `{{ url_for('admin.products_list') }}?sort=${sort}&order=${order}`;
@@ -149,8 +176,10 @@ function openEditModal(productId, category, franchiseId, unitPrice) {
     document.getElementById('modalSubmitBtn').textContent = '변경하기';
     document.getElementById('productForm').action = `/admin/products/${productId}/edit`;
 
-    // Fill form
-    document.getElementById('modal_category').value = category;
+    // Fill form - set category first, trigger franchise list update, then set franchise
+    const catSel = document.getElementById('modal_category');
+    catSel.value = category;
+    catSel.dispatchEvent(new Event('change'));
     document.getElementById('modal_franchise_id').value = franchiseId;
     document.getElementById('modal_unit_price').value = unitPrice;
 

@@ -1261,9 +1261,17 @@ def products_toggle(id):
 @admin_required
 def products_delete(id):
     product = Product.query.get_or_404(id)
-    db.session.delete(product)
-    db.session.commit()
-    flash('제품이 삭제되었습니다.', 'success')
+    try:
+        # Delete related records first (FK constraints)
+        StockIn.query.filter_by(product_id=id).delete()
+        ShipmentItem.query.filter_by(product_id=id).delete()
+        Payment.query.filter_by(product_id=id).delete()
+        db.session.delete(product)
+        db.session.commit()
+        flash('제품이 삭제되었습니다.', 'success')
+    except Exception as e:
+        db.session.rollback()
+        flash(f'삭제 중 오류가 발생했습니다: {str(e)}', 'danger')
     return redirect(url_for('admin.products_list'))
 
 
@@ -1562,9 +1570,10 @@ def shipments_submit():
         item_jungsung_id = int(jungsung_ids[i]) if i < len(jungsung_ids) and jungsung_ids[i] else None
 
         if current_user.is_admin() and item_branch_id:
-            # Admin 출고 to 지사 → save as 입고 only (no 출고 record)
+            # Admin 출고 to 지사 → save as StockIn with record_type='transfer'
             branch_stockin = StockIn(
                 stock_date=item_date,
+                record_type='transfer',
                 branch_id=item_branch_id,
                 product_id=int(product_ids[i]),
                 quantity=qty,
