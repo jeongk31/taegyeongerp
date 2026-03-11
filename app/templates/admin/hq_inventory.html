@@ -143,6 +143,256 @@
     </div>
 </div>
 
+<!-- 지사별 검색 -->
+<div class="card mb-4" id="section-branch">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <span>지사별 검색</span>
+        <div class="export-buttons no-print">
+            <button class="btn btn-success btn-sm export-btn" onclick="exportTableToExcel('branchInventoryTable', '지사별재고')">
+                <i class="bi bi-file-earmark-excel"></i> Excel
+            </button>
+            <button class="btn btn-danger btn-sm export-btn" onclick="exportTableToPDF('branchInventoryTable', '지사별재고')">
+                <i class="bi bi-file-earmark-pdf"></i> PDF
+            </button>
+            <button class="btn btn-secondary btn-sm export-btn" onclick="printTable()">
+                <i class="bi bi-printer"></i> 인쇄
+            </button>
+        </div>
+    </div>
+    <div class="card-body">
+        <form method="GET" action="{{ url_for('admin.hq_inventory') }}#section-branch" class="row g-2 align-items-end mb-3" style="font-size: 0.85rem;">
+            <input type="hidden" name="period_type" value="{{ period_type }}">
+            <input type="hidden" name="year" value="{{ year }}">
+            <input type="hidden" name="month" value="{{ month }}">
+            <input type="hidden" name="date_from" value="{{ filters.date_from or '' }}">
+            <input type="hidden" name="date_to" value="{{ filters.date_to or '' }}">
+            <div class="col-md-2">
+                <label class="form-label mb-1">지사</label>
+                <select name="branch_id" class="form-select form-select-sm">
+                    <option value="">선택</option>
+                    {% for branch in branches %}
+                    <option value="{{ branch.id }}" {% if filters.branch_id == branch.id %}selected{% endif %}>{{ branch.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label mb-1">품목</label>
+                <select name="branch_category" id="sel_branch_category" class="form-select form-select-sm" onchange="updateFranchiseOptions('sel_branch_category', 'sel_branch_franchise_id', '')">
+                    <option value="">전체</option>
+                    {% for cat in all_category_names %}
+                    <option value="{{ cat }}" {% if filters.branch_category == cat %}selected{% endif %}>{{ cat }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label mb-1">프랜차이즈</label>
+                <select name="branch_franchise_id" id="sel_branch_franchise_id" class="form-select form-select-sm">
+                    <option value="">전체</option>
+                    {% for franchise in franchises %}
+                    <option value="{{ franchise.id }}" {% if filters.branch_franchise_id == franchise.id %}selected{% endif %}>{{ franchise.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-auto">
+                <button type="submit" class="btn btn-sm btn-primary">검색</button>
+            </div>
+        </form>
+        {% if filters.branch_id %}
+        <div class="table-responsive">
+            <table id="branchInventoryTable" class="table table-sm table-bordered mb-0" style="font-size: 0.85rem;">
+                <thead class="table-light">
+                    <tr>
+                        <th>지사</th>
+                        <th>프랜차이즈</th>
+                        <th>품목</th>
+                        <th class="text-end">입고수량</th>
+                        <th class="text-end">출고수량</th>
+                        <th class="text-end table-warning">재고수량</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for stat in branch_stats %}
+                    <tr>
+                        <td>{{ stat.branch.name if stat.branch else '-' }}</td>
+                        <td>{{ stat.franchise.name if stat.franchise else '-' }}</td>
+                        <td>{{ stat.category }}</td>
+                        <td class="text-end">{{ '{:,}'.format(stat.stockin) }}</td>
+                        <td class="text-end">{{ '{:,}'.format(stat.shipment) }}</td>
+                        <td class="text-end table-warning">{{ '{:,}'.format(stat.stock) }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <p class="text-muted text-center mb-0">지사를 선택해주세요.</p>
+        {% endif %}
+    </div>
+</div>
+
+<!-- 품목별 검색 -->
+<div class="card mb-4" id="section-category">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <span>품목별 검색</span>
+        <div class="export-buttons no-print">
+            <button class="btn btn-success btn-sm export-btn" onclick="exportTableToExcel('categoryInventoryTable', '품목별재고')">
+                <i class="bi bi-file-earmark-excel"></i> Excel
+            </button>
+            <button class="btn btn-danger btn-sm export-btn" onclick="exportTableToPDF('categoryInventoryTable', '품목별재고')">
+                <i class="bi bi-file-earmark-pdf"></i> PDF
+            </button>
+            <button class="btn btn-secondary btn-sm export-btn" onclick="printTable()">
+                <i class="bi bi-printer"></i> 인쇄
+            </button>
+        </div>
+    </div>
+    <div class="card-body">
+        <form method="GET" action="{{ url_for('admin.hq_inventory') }}#section-category" class="row g-2 align-items-end mb-3" style="font-size: 0.85rem;">
+            <input type="hidden" name="period_type" value="{{ period_type }}">
+            <input type="hidden" name="year" value="{{ year }}">
+            <input type="hidden" name="month" value="{{ month }}">
+            <input type="hidden" name="date_from" value="{{ filters.date_from or '' }}">
+            <input type="hidden" name="date_to" value="{{ filters.date_to or '' }}">
+            <div class="col-md-2">
+                <label class="form-label mb-1">품목</label>
+                <select name="cat_search" id="sel_cat_search" class="form-select form-select-sm" onchange="updateFranchiseOptions('sel_cat_search', 'sel_cat_search_franchise_id', '')">
+                    <option value="">선택</option>
+                    {% for cat in all_category_names %}
+                    <option value="{{ cat }}" {% if filters.cat_search == cat %}selected{% endif %}>{{ cat }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label mb-1">프랜차이즈</label>
+                <select name="cat_search_franchise_id" id="sel_cat_search_franchise_id" class="form-select form-select-sm">
+                    <option value="">전체</option>
+                    {% for franchise in franchises %}
+                    <option value="{{ franchise.id }}" {% if filters.cat_search_franchise_id == franchise.id %}selected{% endif %}>{{ franchise.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-auto">
+                <button type="submit" class="btn btn-sm btn-primary">검색</button>
+            </div>
+        </form>
+        {% if filters.cat_search %}
+        <div class="table-responsive">
+            <table id="categoryInventoryTable" class="table table-sm table-bordered mb-0" style="font-size: 0.85rem;">
+                <thead class="table-light">
+                    <tr>
+                        <th>프랜차이즈</th>
+                        <th>품목</th>
+                        <th class="text-end">입고수량</th>
+                        <th class="text-end">출고수량</th>
+                        <th class="text-end table-warning">재고수량</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for stat in cat_search_stats %}
+                    <tr>
+                        <td>{{ stat.franchise.name if stat.franchise else '-' }}</td>
+                        <td>{{ stat.category }}</td>
+                        <td class="text-end">{{ '{:,}'.format(stat.stockin) }}</td>
+                        <td class="text-end">{{ '{:,}'.format(stat.shipment) }}</td>
+                        <td class="text-end table-warning">{{ '{:,}'.format(stat.stock) }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <p class="text-muted text-center mb-0">품목을 선택해주세요.</p>
+        {% endif %}
+    </div>
+</div>
+
+<!-- 중상별 검색 -->
+<div class="card mb-4" id="section-jungsung">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <span>중상별 검색</span>
+        <div class="export-buttons no-print">
+            <button class="btn btn-success btn-sm export-btn" onclick="exportTableToExcel('jungsungInventoryTable', '중상별재고')">
+                <i class="bi bi-file-earmark-excel"></i> Excel
+            </button>
+            <button class="btn btn-danger btn-sm export-btn" onclick="exportTableToPDF('jungsungInventoryTable', '중상별재고')">
+                <i class="bi bi-file-earmark-pdf"></i> PDF
+            </button>
+            <button class="btn btn-secondary btn-sm export-btn" onclick="printTable()">
+                <i class="bi bi-printer"></i> 인쇄
+            </button>
+        </div>
+    </div>
+    <div class="card-body">
+        <form method="GET" action="{{ url_for('admin.hq_inventory') }}#section-jungsung" class="row g-2 align-items-end mb-3" style="font-size: 0.85rem;">
+            <input type="hidden" name="period_type" value="{{ period_type }}">
+            <input type="hidden" name="year" value="{{ year }}">
+            <input type="hidden" name="month" value="{{ month }}">
+            <input type="hidden" name="date_from" value="{{ filters.date_from or '' }}">
+            <input type="hidden" name="date_to" value="{{ filters.date_to or '' }}">
+            <div class="col-md-2">
+                <label class="form-label mb-1">중상</label>
+                <select name="jungsung_id" class="form-select form-select-sm">
+                    <option value="">선택</option>
+                    {% for jungsung in jungsungs %}
+                    <option value="{{ jungsung.id }}" {% if filters.jungsung_id == jungsung.id %}selected{% endif %}>{{ jungsung.business_name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label mb-1">품목</label>
+                <select name="jungsung_category" id="sel_jungsung_category" class="form-select form-select-sm" onchange="updateFranchiseOptions('sel_jungsung_category', 'sel_jungsung_franchise_id', '')">
+                    <option value="">전체</option>
+                    {% for cat in all_category_names %}
+                    <option value="{{ cat }}" {% if filters.jungsung_category == cat %}selected{% endif %}>{{ cat }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label mb-1">프랜차이즈</label>
+                <select name="jungsung_franchise_id" id="sel_jungsung_franchise_id" class="form-select form-select-sm">
+                    <option value="">전체</option>
+                    {% for franchise in franchises %}
+                    <option value="{{ franchise.id }}" {% if filters.jungsung_franchise_id == franchise.id %}selected{% endif %}>{{ franchise.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-auto">
+                <button type="submit" class="btn btn-sm btn-primary">검색</button>
+            </div>
+        </form>
+        {% if filters.jungsung_id %}
+        <div class="table-responsive">
+            <table id="jungsungInventoryTable" class="table table-sm table-bordered mb-0" style="font-size: 0.85rem;">
+                <thead class="table-light">
+                    <tr>
+                        <th>중상</th>
+                        <th>프랜차이즈</th>
+                        <th>품목</th>
+                        <th class="text-end">입고수량</th>
+                        <th class="text-end">출고수량</th>
+                        <th class="text-end table-warning">재고수량</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for stat in jungsung_stats %}
+                    <tr>
+                        <td>{{ stat.jungsung.business_name if stat.jungsung else '-' }}</td>
+                        <td>{{ stat.franchise.name if stat.franchise else '-' }}</td>
+                        <td>{{ stat.category }}</td>
+                        <td class="text-end">{{ '{:,}'.format(stat.stockin) }}</td>
+                        <td class="text-end">{{ '{:,}'.format(stat.shipment) }}</td>
+                        <td class="text-end table-warning">{{ '{:,}'.format(stat.stock) }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <p class="text-muted text-center mb-0">중상을 선택해주세요.</p>
+        {% endif %}
+    </div>
+</div>
+
 <!-- 입고사 검색 -->
 <div class="card mb-4" id="section-supplier">
     <div class="card-header d-flex justify-content-between align-items-center">
@@ -266,6 +516,12 @@ document.addEventListener('DOMContentLoaded', function() {
     var el;
     el = document.getElementById('sel_franchise_category');
     if (el && el.value) updateFranchiseOptions('sel_franchise_category', 'sel_franchise_id', '{{ filters.franchise_id or "" }}');
+    el = document.getElementById('sel_branch_category');
+    if (el && el.value) updateFranchiseOptions('sel_branch_category', 'sel_branch_franchise_id', '{{ filters.branch_franchise_id or "" }}');
+    el = document.getElementById('sel_cat_search');
+    if (el && el.value) updateFranchiseOptions('sel_cat_search', 'sel_cat_search_franchise_id', '{{ filters.cat_search_franchise_id or "" }}');
+    el = document.getElementById('sel_jungsung_category');
+    if (el && el.value) updateFranchiseOptions('sel_jungsung_category', 'sel_jungsung_franchise_id', '{{ filters.jungsung_franchise_id or "" }}');
     el = document.getElementById('sel_supplier_category');
     if (el && el.value) updateFranchiseOptions('sel_supplier_category', 'sel_supplier_franchise_id', '{{ filters.supplier_franchise_id or "" }}');
 });
