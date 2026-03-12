@@ -71,7 +71,7 @@
 {% if search_type == 'calendar' %}
 <div class="card mb-4">
     <div class="card-header">
-        <span>일별 검색 ({{ year }}년 {{ month }}월 {{ daily_week_num }}주)</span>
+        <span>일별 검색 ({{ year }}년 {{ month }}월{% if daily_week_num > 0 %} {{ daily_week_num }}주{% endif %})</span>
     </div>
     <div class="card-body py-2">
         <form method="GET" action="{{ url_for('admin.erp_tracking') }}" class="row g-2 align-items-center">
@@ -104,6 +104,10 @@
             </div>
         </form>
         <div class="mt-2">
+            <a href="{{ url_for('admin.erp_tracking', search_type='calendar', year=year, month=month, week=0, category=selected_category) }}"
+               class="week-tab {% if daily_week_num == 0 %}active{% endif %}">
+                전체
+            </a>
             {% for week in daily_weeks %}
             <a href="{{ url_for('admin.erp_tracking', search_type='calendar', year=year, month=month, week=week.num, category=selected_category) }}"
                class="week-tab {% if week.num == daily_week_num %}active{% endif %}">

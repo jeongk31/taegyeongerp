@@ -18,8 +18,33 @@
             font-size: 0.875rem;
         }
         @media print {
-            .no-print {
+            .no-print, .navbar {
                 display: none !important;
+            }
+            /* Remove all scroll/overflow constraints for printing */
+            .table-responsive,
+            .card, .card-body,
+            div[style*="overflow"],
+            div[style*="max-height"] {
+                overflow: visible !important;
+                max-height: none !important;
+                height: auto !important;
+            }
+            table {
+                width: 100% !important;
+            }
+            /* Shrink font to fit wide tables on paper */
+            .tracking-table {
+                font-size: 7pt !important;
+            }
+            .tracking-table th, .tracking-table td {
+                padding: 2px 3px !important;
+                white-space: nowrap;
+            }
+            /* Landscape and fit to page */
+            @page {
+                size: landscape;
+                margin: 5mm;
             }
         }
     </style>

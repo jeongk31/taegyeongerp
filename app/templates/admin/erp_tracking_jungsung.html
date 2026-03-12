@@ -164,7 +164,7 @@
 {% if search_type == 'calendar' %}
 <div class="card mb-4">
     <div class="card-header d-flex justify-content-between align-items-center">
-        <span>{{ jungsung.contact_person or jungsung.business_name }} - 일별 검색 ({{ year }}년 {{ month }}월 {{ daily_week_num }}주)</span>
+        <span>{{ jungsung.contact_person or jungsung.business_name }} - 일별 검색 ({{ year }}년 {{ month }}월{% if daily_week_num > 0 %} {{ daily_week_num }}주{% endif %})</span>
         <div class="export-buttons no-print">
             <button class="btn btn-success btn-sm export-btn" onclick="exportTableToExcel('dailyTable', 'ERP등록체크_일별_{{ year }}{{ month }}_{{ daily_week_num }}주')">
                 <i class="bi bi-file-earmark-excel"></i> Excel
@@ -214,6 +214,10 @@
             </div>
         </form>
         <div class="mt-2">
+            <a href="{{ url_for('admin.erp_tracking_jungsung', search_type='calendar', year=year, month=month, week=0, category=selected_category, view_mode=view_mode, franchise_id=franchise_filter or '', store_id=store_filter or '') }}"
+               class="week-tab {% if daily_week_num == 0 %}active{% endif %}">
+                전체
+            </a>
             {% for week in daily_weeks %}
             <a href="{{ url_for('admin.erp_tracking_jungsung', search_type='calendar', year=year, month=month, week=week.num, category=selected_category, view_mode=view_mode, franchise_id=franchise_filter or '', store_id=store_filter or '') }}"
                class="week-tab {% if week.num == daily_week_num %}active{% endif %}">

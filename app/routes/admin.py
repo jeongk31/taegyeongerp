@@ -3312,20 +3312,35 @@ def erp_tracking():
     if search_type == 'calendar':
         daily_weeks_list = build_month_weeks(year, month)
 
-        daily_week_num = request.args.get('week', type=int) or 1
+        daily_week_num = request.args.get('week', type=int) or 0  # 0 = 전체 (default)
         if daily_week_num > len(daily_weeks_list):
             daily_week_num = len(daily_weeks_list)
-        selected_week = daily_weeks_list[daily_week_num - 1]
 
         weekday_names = ['월', '화', '수', '목', '금', '토', '일']
-        current_d = selected_week['start']
-        while current_d <= selected_week['end']:
-            daily_days.append({
-                'date': current_d,
-                'weekday': weekday_names[current_d.weekday()],
-                'label': current_d.strftime('%m/%d')
-            })
-            current_d += timedelta(days=1)
+
+        if daily_week_num == 0:
+            # 전체: show all days in the month
+            first_day = date(year, month, 1)
+            from calendar import monthrange as mr
+            last_day = date(year, month, mr(year, month)[1])
+            current_d = first_day
+            while current_d <= last_day:
+                daily_days.append({
+                    'date': current_d,
+                    'weekday': weekday_names[current_d.weekday()],
+                    'label': current_d.strftime('%m/%d')
+                })
+                current_d += timedelta(days=1)
+        else:
+            selected_week = daily_weeks_list[daily_week_num - 1]
+            current_d = selected_week['start']
+            while current_d <= selected_week['end']:
+                daily_days.append({
+                    'date': current_d,
+                    'weekday': weekday_names[current_d.weekday()],
+                    'label': current_d.strftime('%m/%d')
+                })
+                current_d += timedelta(days=1)
 
         for store in stores:
             store_days = []
@@ -4511,25 +4526,43 @@ def erp_tracking_jungsung():
         # Build weeks for the month (Mon-Sun aligned)
         daily_weeks = build_month_weeks(year, month)
 
-        daily_week_num = request.args.get('week', type=int) or 1
+        daily_week_num = request.args.get('week', type=int) or 0  # 0 = 전체 (default)
         if daily_week_num > len(daily_weeks):
             daily_week_num = len(daily_weeks)
-        selected_week = daily_weeks[daily_week_num - 1]
 
-        # Build individual day periods
         weekday_names = ['월', '화', '수', '목', '금', '토', '일']
-        current_d = selected_week['start']
-        while current_d <= selected_week['end']:
-            daily_days.append({
-                'date': current_d,
-                'weekday': weekday_names[current_d.weekday()],
-                'label': current_d.strftime('%m/%d')
-            })
-            current_d += timedelta(days=1)
+
+        if daily_week_num == 0:
+            # 전체: show all days in the month
+            first_day = date(year, month, 1)
+            from calendar import monthrange as mr
+            last_day = date(year, month, mr(year, month)[1])
+            current_d = first_day
+            while current_d <= last_day:
+                daily_days.append({
+                    'date': current_d,
+                    'weekday': weekday_names[current_d.weekday()],
+                    'label': current_d.strftime('%m/%d')
+                })
+                current_d += timedelta(days=1)
+            overall_start = first_day
+            overall_end = last_day
+        else:
+            selected_week = daily_weeks[daily_week_num - 1]
+            current_d = selected_week['start']
+            while current_d <= selected_week['end']:
+                daily_days.append({
+                    'date': current_d,
+                    'weekday': weekday_names[current_d.weekday()],
+                    'label': current_d.strftime('%m/%d')
+                })
+                current_d += timedelta(days=1)
+            overall_start = selected_week['start']
+            overall_end = selected_week['end']
 
         day_periods = [{'start': d['date'], 'end': d['date']} for d in daily_days]
-        s_rows = batch_shipments(selected_week['start'], selected_week['end'])
-        e_rows = batch_erp(selected_week['start'], selected_week['end'])
+        s_rows = batch_shipments(overall_start, overall_end)
+        e_rows = batch_erp(overall_start, overall_end)
         s_lookup, e_lookup, w_lookup = build_period_lookups(day_periods, s_rows, e_rows)
         daily_data = build_store_data(day_periods, s_lookup, e_lookup, w_lookup, 'days')
         if view_mode == 'franchise':
@@ -4814,20 +4847,35 @@ def erp_tracking_franchise():
         # Build weeks for the month (Mon-Sun aligned)
         daily_weeks = build_month_weeks(year, month)
 
-        daily_week_num = request.args.get('week', type=int) or 1
+        daily_week_num = request.args.get('week', type=int) or 0  # 0 = 전체 (default)
         if daily_week_num > len(daily_weeks):
             daily_week_num = len(daily_weeks)
-        selected_week = daily_weeks[daily_week_num - 1]
 
         weekday_names = ['월', '화', '수', '목', '금', '토', '일']
-        current_d = selected_week['start']
-        while current_d <= selected_week['end']:
-            daily_days.append({
-                'date': current_d,
-                'weekday': weekday_names[current_d.weekday()],
-                'label': current_d.strftime('%m/%d')
-            })
-            current_d += timedelta(days=1)
+
+        if daily_week_num == 0:
+            # 전체: show all days in the month
+            first_day = date(year, month, 1)
+            from calendar import monthrange as mr
+            last_day = date(year, month, mr(year, month)[1])
+            current_d = first_day
+            while current_d <= last_day:
+                daily_days.append({
+                    'date': current_d,
+                    'weekday': weekday_names[current_d.weekday()],
+                    'label': current_d.strftime('%m/%d')
+                })
+                current_d += timedelta(days=1)
+        else:
+            selected_week = daily_weeks[daily_week_num - 1]
+            current_d = selected_week['start']
+            while current_d <= selected_week['end']:
+                daily_days.append({
+                    'date': current_d,
+                    'weekday': weekday_names[current_d.weekday()],
+                    'label': current_d.strftime('%m/%d')
+                })
+                current_d += timedelta(days=1)
 
         # Build daily data for each store
         for store in stores:
@@ -5244,20 +5292,35 @@ def monthly_closing_franchise():
     if search_type == 'calendar':
         daily_weeks_list = build_month_weeks(year, month)
 
-        daily_week_num = request.args.get('week', type=int) or 1
+        daily_week_num = request.args.get('week', type=int) or 0  # 0 = 전체 (default)
         if daily_week_num > len(daily_weeks_list):
             daily_week_num = len(daily_weeks_list)
-        selected_week = daily_weeks_list[daily_week_num - 1]
 
         weekday_names = ['월', '화', '수', '목', '금', '토', '일']
-        current_d = selected_week['start']
-        while current_d <= selected_week['end']:
-            daily_days.append({
-                'date': current_d,
-                'weekday': weekday_names[current_d.weekday()],
-                'label': current_d.strftime('%m/%d')
-            })
-            current_d += timedelta(days=1)
+
+        if daily_week_num == 0:
+            # 전체: show all days in the month
+            first_day = date(year, month, 1)
+            from calendar import monthrange as mr
+            last_day = date(year, month, mr(year, month)[1])
+            current_d = first_day
+            while current_d <= last_day:
+                daily_days.append({
+                    'date': current_d,
+                    'weekday': weekday_names[current_d.weekday()],
+                    'label': current_d.strftime('%m/%d')
+                })
+                current_d += timedelta(days=1)
+        else:
+            selected_week = daily_weeks_list[daily_week_num - 1]
+            current_d = selected_week['start']
+            while current_d <= selected_week['end']:
+                daily_days.append({
+                    'date': current_d,
+                    'weekday': weekday_names[current_d.weekday()],
+                    'label': current_d.strftime('%m/%d')
+                })
+                current_d += timedelta(days=1)
 
         day_periods = [{'start': dd['date'], 'end': dd['date']} for dd in daily_days]
         daily_data = build_closing_data(day_periods, 'days')
