@@ -3,135 +3,220 @@
 
 {% block extra_css %}
 <style>
-    .erp-table {
-        font-size: 0.85rem;
+    /* ===== Mobile-first card layout ===== */
+    .erp-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+        margin-bottom: 1rem;
     }
-    .erp-table th, .erp-table td {
-        padding: 0.4rem 0.5rem;
-        vertical-align: middle;
-    }
-    .erp-table input[type="number"] {
-        width: 70px;
-        padding: 0.25rem 0.5rem;
-        font-size: 0.85rem;
-        -moz-appearance: textfield;
-    }
-    .erp-table input[type="number"]::-webkit-outer-spin-button,
-    .erp-table input[type="number"]::-webkit-inner-spin-button {
-        -webkit-appearance: none;
+    .erp-header h2 {
+        font-size: 1.2rem;
         margin: 0;
-    }
-    .erp-table input[type="number"]:disabled {
-        background-color: #e9ecef;
-        cursor: not-allowed;
-    }
-    .erp-table .blocked-input {
-        background-color: #f5f5f5;
-        color: #ccc;
-        cursor: not-allowed;
-    }
-    .franchise-header {
-        background-color: #e9ecef;
-        font-weight: bold;
-    }
-    .completed-row {
-        background-color: #d4edda;
     }
     .date-picker-wrapper {
         display: inline-flex;
         align-items: center;
+        gap: 0.25rem;
+    }
+    .date-picker-wrapper .btn { padding: 0.25rem 0.5rem; }
+    .date-picker-wrapper input { width: 130px; font-size: 0.9rem; }
+
+    /* Action bar */
+    .action-bar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 0.75rem;
+        flex-wrap: wrap;
         gap: 0.5rem;
+    }
+    .action-bar .date-label {
+        font-size: 0.9rem;
+        color: #666;
+    }
+
+    /* Franchise section */
+    .franchise-section {
+        margin-bottom: 0.5rem;
+    }
+    .franchise-title {
+        background: #343a40;
+        color: #fff;
+        padding: 0.5rem 0.75rem;
+        font-weight: 600;
+        font-size: 0.95rem;
+        border-radius: 6px 6px 0 0;
+    }
+
+    /* Store card */
+    .store-card {
+        border: 1px solid #dee2e6;
+        border-top: none;
+        padding: 0.6rem 0.75rem;
+        background: #fff;
+    }
+    .store-card:last-child {
+        border-radius: 0 0 6px 6px;
+    }
+    .store-card.completed {
+        background: #d4edda;
+    }
+    .store-name {
+        font-weight: 600;
+        font-size: 0.95rem;
+        margin-bottom: 0.4rem;
+        color: #333;
+    }
+    .cat-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+        gap: 0.4rem;
+    }
+    .cat-item {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+    }
+    .cat-label {
+        font-size: 0.75rem;
+        color: #666;
+        margin-bottom: 2px;
+    }
+    .cat-label.waste { color: #dc3545; }
+    .cat-input {
+        width: 100%;
+        text-align: center;
+        font-size: 1.1rem;
+        font-weight: 500;
+        padding: 0.4rem 0.25rem;
+        border: 1.5px solid #ced4da;
+        border-radius: 6px;
+        -moz-appearance: textfield;
+    }
+    .cat-input::-webkit-outer-spin-button,
+    .cat-input::-webkit-inner-spin-button {
+        -webkit-appearance: none;
+        margin: 0;
+    }
+    .cat-input:focus {
+        border-color: #0d6efd;
+        outline: none;
+        box-shadow: 0 0 0 2px rgba(13,110,253,0.25);
+    }
+    .cat-input:disabled {
+        background-color: #e9ecef;
+        color: #999;
+    }
+    .cat-input.blocked {
+        background-color: #f5f5f5;
+        color: #ccc;
+        cursor: not-allowed;
+    }
+
+    /* Sticky save bar */
+    .save-bar {
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        background: #fff;
+        border-top: 2px solid #dee2e6;
+        padding: 0.6rem 1rem;
+        display: flex;
+        justify-content: center;
+        gap: 0.5rem;
+        z-index: 1050;
+        box-shadow: 0 -2px 8px rgba(0,0,0,0.1);
+    }
+    .save-bar .btn {
+        min-width: 120px;
+        font-size: 1rem;
+        padding: 0.6rem 1.5rem;
+    }
+    /* Bottom padding so content isn't hidden behind sticky bar */
+    .content-wrapper {
+        padding-bottom: 80px;
+    }
+
+    /* Desktop: still show nicely */
+    @media (min-width: 768px) {
+        .cat-grid {
+            grid-template-columns: repeat(auto-fill, minmax(90px, 1fr));
+        }
+        .erp-header h2 { font-size: 1.4rem; }
     }
 </style>
 {% endblock %}
 
 {% block content %}
-<div class="page-header d-flex justify-content-between align-items-center">
-    <h2>ERP 등록</h2>
-    <div class="date-picker-wrapper">
-        <button type="button" class="btn btn-sm btn-outline-secondary" onclick="goYesterday()" title="어제">
-            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
-                <path fill-rule="evenodd" d="M11.354 1.646a.5.5 0 0 1 0 .708L5.707 8l5.647 5.646a.5.5 0 0 1-.708.708l-6-6a.5.5 0 0 1 0-.708l6-6a.5.5 0 0 1 .708 0z"/>
-            </svg>
-        </button>
-        <input type="date" id="registration-date" class="form-control form-control-sm" style="width: 150px;"
-               value="{{ registration_date.strftime('%Y-%m-%d') }}" onchange="changeDate()">
-        <button type="button" class="btn btn-sm btn-outline-secondary" onclick="goTomorrow()" title="내일">
-            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
-                <path fill-rule="evenodd" d="M4.646 1.646a.5.5 0 0 1 .708 0l6 6a.5.5 0 0 1 0 .708l-6 6a.5.5 0 0 1-.708-.708L10.293 8 4.646 2.354a.5.5 0 0 1 0-.708z"/>
-            </svg>
+<div class="content-wrapper">
+    <div class="erp-header">
+        <h2>ERP 등록</h2>
+        <div class="date-picker-wrapper">
+            <button type="button" class="btn btn-sm btn-outline-secondary" onclick="goYesterday()" title="어제">
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
+                    <path fill-rule="evenodd" d="M11.354 1.646a.5.5 0 0 1 0 .708L5.707 8l5.647 5.646a.5.5 0 0 1-.708.708l-6-6a.5.5 0 0 1 0-.708l6-6a.5.5 0 0 1 .708 0z"/>
+                </svg>
+            </button>
+            <input type="date" id="registration-date" class="form-control form-control-sm"
+                   value="{{ registration_date.strftime('%Y-%m-%d') }}" onchange="changeDate()">
+            <button type="button" class="btn btn-sm btn-outline-secondary" onclick="goTomorrow()" title="내일">
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
+                    <path fill-rule="evenodd" d="M4.646 1.646a.5.5 0 0 1 .708 0l6 6a.5.5 0 0 1 0 .708l-6 6a.5.5 0 0 1-.708-.708L10.293 8 4.646 2.354a.5.5 0 0 1 0-.708z"/>
+                </svg>
+            </button>
+        </div>
+    </div>
+
+    <div class="action-bar">
+        <span class="date-label">{{ registration_date.strftime('%Y년 %m월 %d일') }} | {{ jungsung.contact_person or jungsung.business_name }}</span>
+        <button type="button" id="editBtn" class="btn btn-sm btn-outline-primary" onclick="toggleEditMode()">
+            <i class="bi bi-pencil-square"></i> 수정
         </button>
     </div>
+
+    {% for franchise_id, group in franchise_groups.items() %}
+    {% set allowed_cats = franchise_cat_names.get(franchise_id, []) %}
+    <div class="franchise-section">
+        <div class="franchise-title">{{ group.franchise.name if group.franchise else '-' }}</div>
+        {% for store in group.stores %}
+        {% set reg = reg_by_store.get(store.id) %}
+        {% set qty_dict = reg.get_category_quantities() if reg else {} %}
+        <div class="store-card {% if reg and reg.is_completed %}completed{% endif %}" data-store-id="{{ store.id }}" data-franchise-id="{{ franchise_id }}">
+            <div class="store-name">{{ store.name }}</div>
+            <div class="cat-grid">
+                {% for cat in categories %}
+                {% if cat.name in allowed_cats %}
+                <div class="cat-item">
+                    <span class="cat-label {% if cat.is_waste %}waste{% endif %}">{{ cat.name }}</span>
+                    <input type="number" class="cat-input category-input"
+                           value="{{ qty_dict.get(cat.name, '') }}"
+                           data-store-id="{{ store.id }}"
+                           data-category="{{ cat.name }}"
+                           min="0" step="1" inputmode="numeric" disabled>
+                </div>
+                {% endif %}
+                {% endfor %}
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="text-center text-muted py-4">담당 매장이 없습니다.</div>
+    {% endfor %}
 </div>
 
-<div class="card">
-    <div class="card-header d-flex justify-content-between align-items-center">
-        <span>{{ jungsung.contact_person or jungsung.business_name }} 담당 매장</span>
-        <div class="d-flex align-items-center gap-2">
-            <span class="text-muted">{{ registration_date.strftime('%Y년 %m월 %d일') }}</span>
-            <button type="button" id="editBtn" class="btn btn-sm btn-outline-primary" onclick="toggleEditMode()">
-                <i class="bi bi-pencil-square"></i> 수정
-            </button>
-            <button type="button" id="saveBtn" class="btn btn-sm btn-success d-none" onclick="saveAll()">
-                <i class="bi bi-check-lg"></i> 저장
-            </button>
-            <button type="button" id="cancelBtn" class="btn btn-sm btn-outline-secondary d-none" onclick="cancelEdit()">
-                취소
-            </button>
-        </div>
-    </div>
-    <div class="card-body p-0">
-        <div class="table-responsive">
-            <table class="table table-sm table-bordered erp-table mb-0">
-                <thead class="table-light">
-                    <tr>
-                        <th>프랜차이즈</th>
-                        <th>매장명</th>
-                        {% for cat in categories %}
-                        <th class="text-center" style="width: 80px; {% if cat.is_waste %}color: #dc3545;{% endif %}">{{ cat.name }}</th>
-                        {% endfor %}
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for franchise_id, group in franchise_groups.items() %}
-                    {% set allowed_cats = franchise_cat_names.get(franchise_id, []) %}
-                    {% for store in group.stores %}
-                    {% set reg = reg_by_store.get(store.id) %}
-                    {% set qty_dict = reg.get_category_quantities() if reg else {} %}
-                    <tr class="{% if reg and reg.is_completed %}completed-row{% endif %}" data-store-id="{{ store.id }}" data-franchise-id="{{ franchise_id }}">
-                        {% if loop.first %}
-                        <td rowspan="{{ group.stores|length }}" class="franchise-header align-middle">
-                            {{ group.franchise.name if group.franchise else '-' }}
-                        </td>
-                        {% endif %}
-                        <td>{{ store.name }}</td>
-                        {% for cat in categories %}
-                        <td class="text-center">
-                            {% if cat.name in allowed_cats %}
-                            <input type="number" class="form-control form-control-sm category-input"
-                                   value="{{ qty_dict.get(cat.name, '') }}"
-                                   data-store-id="{{ store.id }}"
-                                   data-category="{{ cat.name }}"
-                                   min="0" step="1" disabled>
-                            {% else %}
-                            <input type="number" class="form-control form-control-sm blocked-input"
-                                   value="" disabled tabindex="-1">
-                            {% endif %}
-                        </td>
-                        {% endfor %}
-                    </tr>
-                    {% endfor %}
-                    {% else %}
-                    <tr>
-                        <td colspan="{{ categories|length + 2 }}" class="text-center text-muted py-3">
-                            담당 매장이 없습니다.
-                        </td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-        </div>
-    </div>
+<!-- Sticky save bar (hidden by default) -->
+<div class="save-bar d-none" id="saveBar">
+    <button type="button" class="btn btn-success" onclick="saveAll()">
+        <i class="bi bi-check-lg"></i> 저장
+    </button>
+    <button type="button" class="btn btn-outline-secondary" onclick="cancelEdit()">
+        취소
+    </button>
 </div>
 
 {% endblock %}
@@ -147,24 +232,21 @@
         const inputs = document.querySelectorAll('.category-input');
         const allEmpty = Array.from(inputs).every(input => !input.value || input.value === '0');
         if (allEmpty && inputs.length > 0) {
-            // Enable all inputs directly without showing save/cancel yet
             inputs.forEach(input => { input.disabled = false; });
             document.getElementById('editBtn').classList.add('d-none');
             isEditing = true;
         }
     }
 
-    // Show save/cancel buttons when user types a value
+    // Show save bar when user types a value
     function onInputChange() {
         if (!isEditing) return;
         const inputs = document.querySelectorAll('.category-input');
-        const hasValue = Array.from(inputs).some(input => input.value && parseInt(input.value) > 0);
+        const hasValue = Array.from(inputs).some(input => input.value && input.value !== '');
         if (hasValue) {
-            document.getElementById('saveBtn').classList.remove('d-none');
-            document.getElementById('cancelBtn').classList.remove('d-none');
+            document.getElementById('saveBar').classList.remove('d-none');
         } else {
-            document.getElementById('saveBtn').classList.add('d-none');
-            document.getElementById('cancelBtn').classList.add('d-none');
+            document.getElementById('saveBar').classList.add('d-none');
         }
     }
 
@@ -172,6 +254,8 @@
         checkAutoEdit();
         document.querySelectorAll('.category-input').forEach(input => {
             input.addEventListener('input', onInputChange);
+            // Select all text on focus for easy editing
+            input.addEventListener('focus', function() { this.select(); });
         });
     });
 
@@ -198,7 +282,6 @@
 
     function toggleEditMode() {
         isEditing = true;
-        // Save original values for cancel
         originalValues = {};
         document.querySelectorAll('.category-input').forEach(input => {
             const key = input.dataset.storeId + '_' + input.dataset.category;
@@ -206,31 +289,28 @@
             input.disabled = false;
         });
         document.getElementById('editBtn').classList.add('d-none');
-        document.getElementById('saveBtn').classList.remove('d-none');
-        document.getElementById('cancelBtn').classList.remove('d-none');
+        document.getElementById('saveBar').classList.remove('d-none');
     }
 
     function cancelEdit() {
         isEditing = false;
-        // Restore original values
         document.querySelectorAll('.category-input').forEach(input => {
             const key = input.dataset.storeId + '_' + input.dataset.category;
             input.value = originalValues[key] || '';
             input.disabled = true;
         });
         document.getElementById('editBtn').classList.remove('d-none');
-        document.getElementById('saveBtn').classList.add('d-none');
-        document.getElementById('cancelBtn').classList.add('d-none');
+        document.getElementById('saveBar').classList.add('d-none');
     }
 
     function saveAll() {
-        const rows = document.querySelectorAll('tr[data-store-id]');
+        const cards = document.querySelectorAll('.store-card[data-store-id]');
         const promises = [];
 
-        rows.forEach(row => {
-            const storeId = parseInt(row.dataset.storeId);
+        cards.forEach(card => {
+            const storeId = parseInt(card.dataset.storeId);
             const quantities = {};
-            row.querySelectorAll('.category-input').forEach(input => {
+            card.querySelectorAll('.category-input').forEach(input => {
                 const category = input.dataset.category;
                 const value = parseInt(input.value) || 0;
                 quantities[category] = value;
@@ -252,17 +332,13 @@
         Promise.all(promises).then(results => {
             const allSuccess = results.every(r => r.success);
             if (allSuccess) {
-                // Mark all rows as completed, disable inputs
-                rows.forEach(row => {
-                    row.classList.add('completed-row');
-                });
+                cards.forEach(card => { card.classList.add('completed'); });
                 document.querySelectorAll('.category-input').forEach(input => {
                     input.disabled = true;
                 });
                 isEditing = false;
                 document.getElementById('editBtn').classList.remove('d-none');
-                document.getElementById('saveBtn').classList.add('d-none');
-                document.getElementById('cancelBtn').classList.add('d-none');
+                document.getElementById('saveBar').classList.add('d-none');
                 alert('저장되었습니다.');
             } else {
                 const failed = results.filter(r => !r.success);

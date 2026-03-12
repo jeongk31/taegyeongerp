@@ -151,6 +151,25 @@ def create_app():
                     db.session.commit()
                     print("Migration complete: jungsung_id column added", flush=True)
 
+                # Migration 4: Add supplier_id to payments
+                if 'supplier_id' not in pay_columns:
+                    print("Migrating payments: adding supplier_id column...", flush=True)
+                    db.session.execute(text(
+                        "ALTER TABLE payments ADD COLUMN supplier_id INTEGER REFERENCES suppliers(id)"
+                    ))
+                    db.session.commit()
+                    print("Migration complete: supplier_id column added to payments", flush=True)
+
+                # Migration 5: Make branch_id nullable in payments (for hq_supplier type)
+                # PostgreSQL: ALTER COLUMN ... DROP NOT NULL
+                try:
+                    db.session.execute(text(
+                        "ALTER TABLE payments ALTER COLUMN branch_id DROP NOT NULL"
+                    ))
+                    db.session.commit()
+                except Exception:
+                    db.session.rollback()
+
             except Exception as me:
                 print(f"Migration error: {me}", flush=True)
                 db.session.rollback()

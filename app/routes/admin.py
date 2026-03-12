@@ -3014,6 +3014,135 @@ def receivables_hq():
 
 
 # ------------------------------------------
+# 본사-입고사 미수금
+# ------------------------------------------
+
+@admin_bp.route('/receivables/supplier')
+@login_required
+@admin_required
+def receivables_supplier():
+    """본사-입고사 미수금 - Admin only"""
+    supplier_id = request.args.get('supplier_id', type=int)
+    franchise_id = request.args.get('franchise_id', type=int)
+    product_id = request.args.get('product_id', type=int)
+    date_from = request.args.get('date_from')
+    date_to = request.args.get('date_to')
+
+    date_from_parsed = None
+    date_to_parsed = None
+    if date_from:
+        try:
+            date_from_parsed = datetime.strptime(date_from, '%Y-%m-%d').date()
+        except ValueError:
+            pass
+    if date_to:
+        try:
+            date_to_parsed = datetime.strptime(date_to, '%Y-%m-%d').date()
+        except ValueError:
+            pass
+
+    all_suppliers = Supplier.query.filter_by(is_active=True).order_by(Supplier.company_name).all()
+    all_franchises = Franchise.query.filter_by(is_active=True).order_by(Franchise.name).all()
+    all_products = Product.query.filter_by(is_active=True).order_by(Product.name).all()
+
+    # Determine suppliers for data query
+    if supplier_id:
+        suppliers = [s for s in all_suppliers if s.id == supplier_id]
+    else:
+        suppliers = all_suppliers
+
+    # Determine franchises for data query
+    if franchise_id:
+        franchises = [f for f in all_franchises if f.id == franchise_id]
+    else:
+        franchises = all_franchises
+
+    # Build receivables data: supplier × franchise × product rows
+    receivables_data = []
+
+    for sup in suppliers:
+        sup_total_qty = 0
+        sup_total_amount = 0
+        sup_total_paid = 0
+        sup_rows = []
+
+        for franchise in franchises:
+            products_query = Product.query.filter_by(is_active=True, franchise_id=franchise.id)
+            if product_id:
+                products_query = products_query.filter_by(id=product_id)
+            products = products_query.order_by(Product.name).all()
+
+            for product in products:
+                # incoming StockIn (입고사→본사)
+                stockin_query = db.session.query(func.sum(StockIn.quantity)).filter(
+                    StockIn.is_active == True,
+                    StockIn.record_type == 'incoming',
+                    StockIn.supplier_id == sup.id,
+                    StockIn.product_id == product.id
+                )
+                if date_from_parsed:
+                    stockin_query = stockin_query.filter(StockIn.stock_date >= date_from_parsed)
+                if date_to_parsed:
+                    stockin_query = stockin_query.filter(StockIn.stock_date <= date_to_parsed)
+                qty = stockin_query.scalar() or 0
+
+                amount = qty * product.unit_price if qty > 0 else 0
+
+                # Payments from 본사 to 입고사
+                payment_query = db.session.query(func.sum(Payment.amount)).filter(
+                    Payment.is_active == True,
+                    Payment.payment_type == 'hq_supplier',
+                    Payment.supplier_id == sup.id,
+                    Payment.franchise_id == franchise.id,
+                    Payment.product_id == product.id
+                )
+                if date_from_parsed:
+                    payment_query = payment_query.filter(Payment.payment_date >= date_from_parsed)
+                if date_to_parsed:
+                    payment_query = payment_query.filter(Payment.payment_date <= date_to_parsed)
+                paid = payment_query.scalar() or 0
+
+                if qty > 0 or paid > 0:
+                    sup_rows.append({
+                        'franchise': franchise,
+                        'product': product,
+                        'qty': qty,
+                        'amount': amount,
+                        'paid': paid,
+                        'unpaid': amount - paid
+                    })
+                    sup_total_qty += qty
+                    sup_total_amount += amount
+                    sup_total_paid += paid
+
+        if sup_rows:
+            receivables_data.append({
+                'supplier': sup,
+                'rows': sup_rows,
+                'total_qty': sup_total_qty,
+                'total_amount': sup_total_amount,
+                'total_paid': sup_total_paid,
+                'total_unpaid': sup_total_amount - sup_total_paid
+            })
+
+    grand_total_unpaid = sum(g['total_unpaid'] for g in receivables_data)
+
+    return render_template('admin/receivables_supplier.html',
+                           receivables_data=receivables_data,
+                           all_suppliers=all_suppliers,
+                           all_franchises=all_franchises,
+                           all_products=all_products,
+                           grand_total_unpaid=grand_total_unpaid,
+                           filters={
+                               'supplier_id': supplier_id,
+                               'franchise_id': franchise_id,
+                               'product_id': product_id,
+                               'date_from': date_from,
+                               'date_to': date_to,
+                           })
+
+
+# ------------------------------------------
 # Payment APIs
 # ------------------------------------------
 
@@ -3026,17 +3155,18 @@ def add_payment():
         data = request.get_json()
         payment_type = data.get('payment_type', 'hq_branch')
 
-        # 본사-지사: admin only
-        if payment_type == 'hq_branch' and not current_user.is_admin():
-            return jsonify({'success': False, 'message': '관리자만 본사-지사 입금 등록이 가능합니다.'}), 403
+        # 본사-지사, 본사-입고사: admin only
+        if payment_type in ('hq_branch', 'hq_supplier') and not current_user.is_admin():
+            return jsonify({'success': False, 'message': '관리자만 입금 등록이 가능합니다.'}), 403
 
         payment = Payment(
             payment_type=payment_type,
             payment_date=datetime.strptime(data['payment_date'], '%Y-%m-%d').date(),
-            branch_id=data['branch_id'],
+            branch_id=data.get('branch_id'),
             jungsung_id=data.get('jungsung_id'),
             franchise_id=data.get('franchise_id'),
             product_id=data.get('product_id'),
+            supplier_id=data.get('supplier_id'),
             amount=int(data['amount']),
             memo=data.get('memo'),
             created_by=current_user.id
@@ -3104,6 +3234,8 @@ def list_payments():
         elif current_user.is_jungsung() and current_user.jungsung:
             payments_query = payments_query.filter_by(jungsung_id=current_user.jungsung.id)
 
+    supplier_id = request.args.get('supplier_id', type=int)
+
     if branch_id:
         payments_query = payments_query.filter_by(branch_id=branch_id)
     if jungsung_id:
@@ -3112,6 +3244,8 @@ def list_payments():
         payments_query = payments_query.filter_by(franchise_id=franchise_id)
     if product_id:
         payments_query = payments_query.filter_by(product_id=product_id)
+    if supplier_id:
+        payments_query = payments_query.filter_by(supplier_id=supplier_id)
 
     if date_from:
         try:
@@ -3135,6 +3269,7 @@ def list_payments():
             'jungsung': p.jungsung.business_name if p.jungsung else '-',
             'franchise': p.franchise.name if p.franchise else '-',
             'product': p.product.name if p.product else '-',
+            'supplier': p.supplier.company_name if p.supplier else '-',
             'amount': p.amount,
             'memo': p.memo or '',
             'created_by': p.creator.username if p.creator else '-',
