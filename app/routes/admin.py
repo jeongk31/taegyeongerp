@@ -2183,9 +2183,6 @@ def hq_inventory():
     branch_franchise_id = request.args.get('branch_franchise_id', type=int)
     cat_search = request.args.get('cat_search')
     cat_search_franchise_id = request.args.get('cat_search_franchise_id', type=int)
-    jungsung_id = request.args.get('jungsung_id', type=int)
-    jungsung_franchise_id = request.args.get('jungsung_franchise_id', type=int)
-    jungsung_category = request.args.get('jungsung_category')
 
     # ========================================
     # 본사 전체 재고 요약: 입고(incoming) / 출고(transfer) / 재고
@@ -2212,20 +2209,32 @@ def hq_inventory():
         'stock': total_stockin - total_shipment
     }
 
+    # Get data for filter dropdowns (needed by all sections)
+    cat_franchise_map, all_category_names, franchises = _get_cat_franchise_map()
+    suppliers = Supplier.query.filter_by(is_active=True).order_by(Supplier.company_name).all()
+    branches = Branch.query.filter_by(is_active=True).order_by(Branch.name).all()
+
     # ========================================
     # 프랜차이즈별검색 (Franchise Search) - HQ perspective
+    # Groups by franchise, each with category rows + subtotal
     # ========================================
-    franchise_groups = []
     if franchise_id:
-        franchise_obj = Franchise.query.get(franchise_id)
-        franchise_cat_names = [c.name for c in franchise_obj.categories] if franchise_obj else []
+        target_franchises_f = [f for f in franchises if f.id == franchise_id]
+    else:
+        target_franchises_f = franchises
+
+    franchise_groups = []
+    for franchise_obj in target_franchises_f:
+        franchise_cat_names = [c.name for c in franchise_obj.categories] if franchise_obj.categories else []
         if franchise_category:
             franchise_cat_names = [c for c in franchise_cat_names if c == franchise_category]
 
         product_stats = []
+        group_stockin = 0
+        group_shipment = 0
         for cat_name in sorted(franchise_cat_names):
             product_ids = [p.id for p in Product.query.filter_by(
-                is_active=True, franchise_id=franchise_id, category=cat_name
+                is_active=True, franchise_id=franchise_obj.id, category=cat_name
             ).all()]
 
             stockin_qty = 0
@@ -2243,77 +2252,109 @@ def hq_inventory():
                     StockIn.stock_date >= date_from_parsed, StockIn.stock_date <= date_to_parsed
                 ).scalar() or 0
 
+            if stockin_qty == 0 and shipment_qty == 0:
+                continue
+
             product_stats.append({
                 'category': cat_name,
                 'stockin': stockin_qty,
                 'shipment': shipment_qty,
                 'stock': stockin_qty - shipment_qty
             })
+            group_stockin += stockin_qty
+            group_shipment += shipment_qty
 
         if product_stats:
-            franchise_groups.append({'franchise': franchise_obj, 'products': product_stats})
+            franchise_groups.append({
+                'franchise': franchise_obj,
+                'products': product_stats,
+                'total_stockin': group_stockin,
+                'total_shipment': group_shipment,
+                'total_stock': group_stockin - group_shipment
+            })
 
     # ========================================
-    # 입고사 검색 (Supplier Search) - HQ perspective
+    # 품목별 검색 (Category Search) - HQ perspective
+    # Groups by category, each with franchise rows + subtotal
     # ========================================
-    supplier_stats = []
-    if supplier_id:
-        supplier_obj = Supplier.query.get(supplier_id)
-        if supplier_franchise_id:
-            target_franchises = [Franchise.query.get(supplier_franchise_id)]
+    if cat_search:
+        target_cats = [cat_search]
+    else:
+        target_cats = all_category_names
+
+    cat_groups = []
+    for cat_name in sorted(target_cats):
+        if cat_search_franchise_id:
+            target_franchises_c = [f for f in franchises if f.id == cat_search_franchise_id]
         else:
-            target_franchises = Franchise.query.filter_by(is_active=True).order_by(Franchise.name).all()
+            target_franchises_c = [f for f in franchises if cat_name in [c.name for c in f.categories]]
 
-        for franchise in target_franchises:
-            if not franchise:
+        cat_rows = []
+        cat_stockin = 0
+        cat_shipment = 0
+        for franchise in target_franchises_c:
+            product_ids = [p.id for p in Product.query.filter_by(
+                is_active=True, franchise_id=franchise.id, category=cat_name
+            ).all()]
+
+            stockin_qty = 0
+            shipment_qty = 0
+            if product_ids:
+                stockin_qty = db.session.query(func.sum(StockIn.quantity)).filter(
+                    StockIn.is_active == True, StockIn.product_id.in_(product_ids),
+                    StockIn.record_type == 'incoming',
+                    StockIn.stock_date >= date_from_parsed, StockIn.stock_date <= date_to_parsed
+                ).scalar() or 0
+
+                shipment_qty = db.session.query(func.sum(StockIn.quantity)).filter(
+                    StockIn.is_active == True, StockIn.product_id.in_(product_ids),
+                    StockIn.record_type == 'transfer',
+                    StockIn.stock_date >= date_from_parsed, StockIn.stock_date <= date_to_parsed
+                ).scalar() or 0
+
+            if stockin_qty == 0 and shipment_qty == 0:
                 continue
-            cat_names = [c.name for c in franchise.categories] if franchise.categories else []
-            if supplier_category:
-                cat_names = [c for c in cat_names if c == supplier_category]
 
-            for cat_name in sorted(cat_names):
-                product_ids = [p.id for p in Product.query.filter_by(
-                    is_active=True, franchise_id=franchise.id, category=cat_name
-                ).all()]
+            cat_rows.append({
+                'franchise': franchise,
+                'stockin': stockin_qty,
+                'shipment': shipment_qty,
+                'stock': stockin_qty - shipment_qty
+            })
+            cat_stockin += stockin_qty
+            cat_shipment += shipment_qty
 
-                stockin_qty = 0
-                shipment_qty = 0
-                if product_ids:
-                    stockin_qty = db.session.query(func.sum(StockIn.quantity)).filter(
-                        StockIn.is_active == True, StockIn.supplier_id == supplier_id,
-                        StockIn.product_id.in_(product_ids), StockIn.record_type == 'incoming',
-                        StockIn.stock_date >= date_from_parsed, StockIn.stock_date <= date_to_parsed
-                    ).scalar() or 0
-
-                    shipment_qty = db.session.query(func.sum(StockIn.quantity)).filter(
-                        StockIn.is_active == True, StockIn.product_id.in_(product_ids),
-                        StockIn.record_type == 'transfer',
-                        StockIn.stock_date >= date_from_parsed, StockIn.stock_date <= date_to_parsed
-                    ).scalar() or 0
-
-                supplier_stats.append({
-                    'supplier': supplier_obj,
-                    'franchise': franchise,
-                    'category': cat_name,
-                    'stockin': stockin_qty,
-                    'shipment': shipment_qty,
-                    'stock': stockin_qty - shipment_qty
-                })
+        if cat_rows:
+            cat_groups.append({
+                'category': cat_name,
+                'rows': cat_rows,
+                'total_stockin': cat_stockin,
+                'total_shipment': cat_shipment,
+                'total_stock': cat_stockin - cat_shipment
+            })
 
     # ========================================
-    # 지사별 검색 (Branch Search) - HQ perspective
+    # 지사별 검색 (Branch Search) - Branch perspective
+    # 입고 = transfer records to this branch
+    # 출고 = ShipmentItem from this branch
+    # Groups by branch, each with franchise/category rows + subtotal
     # ========================================
-    branch_stats = []
     if branch_id:
-        branch_obj = Branch.query.get(branch_id)
-        if branch_franchise_id:
-            target_franchises_b = [Franchise.query.get(branch_franchise_id)]
-        else:
-            target_franchises_b = Franchise.query.filter_by(is_active=True).order_by(Franchise.name).all()
+        target_branches = [b for b in branches if b.id == branch_id]
+    else:
+        target_branches = branches
 
+    branch_groups = []
+    for branch_obj in target_branches:
+        if branch_franchise_id:
+            target_franchises_b = [f for f in franchises if f.id == branch_franchise_id]
+        else:
+            target_franchises_b = franchises
+
+        branch_rows = []
+        br_stockin = 0
+        br_shipment = 0
         for franchise in target_franchises_b:
-            if not franchise:
-                continue
             cat_names = [c.name for c in franchise.categories] if franchise.categories else []
             if branch_category:
                 cat_names = [c for c in cat_names if c == branch_category]
@@ -2326,96 +2367,60 @@ def hq_inventory():
                 stockin_qty = 0
                 shipment_qty = 0
                 if product_ids:
+                    # 입고: transfer records to this branch
                     stockin_qty = db.session.query(func.sum(StockIn.quantity)).filter(
                         StockIn.is_active == True, StockIn.product_id.in_(product_ids),
-                        StockIn.record_type == 'incoming',
+                        StockIn.record_type == 'transfer', StockIn.branch_id == branch_obj.id,
                         StockIn.stock_date >= date_from_parsed, StockIn.stock_date <= date_to_parsed
                     ).scalar() or 0
 
-                    shipment_qty = db.session.query(func.sum(StockIn.quantity)).filter(
-                        StockIn.is_active == True, StockIn.product_id.in_(product_ids),
-                        StockIn.record_type == 'transfer', StockIn.branch_id == branch_id,
-                        StockIn.stock_date >= date_from_parsed, StockIn.stock_date <= date_to_parsed
+                    # 출고: shipment items from this branch
+                    shipment_qty = db.session.query(func.sum(ShipmentItem.quantity)).filter(
+                        ShipmentItem.is_active == True, ShipmentItem.product_id.in_(product_ids),
+                        ShipmentItem.branch_id == branch_obj.id,
+                        ShipmentItem.shipment_date >= date_from_parsed,
+                        ShipmentItem.shipment_date <= date_to_parsed
                     ).scalar() or 0
 
-                branch_stats.append({
-                    'branch': branch_obj,
+                if stockin_qty == 0 and shipment_qty == 0:
+                    continue
+
+                branch_rows.append({
                     'franchise': franchise,
                     'category': cat_name,
                     'stockin': stockin_qty,
                     'shipment': shipment_qty,
                     'stock': stockin_qty - shipment_qty
                 })
+                br_stockin += stockin_qty
+                br_shipment += shipment_qty
 
-    # ========================================
-    # 품목별 검색 (Category Search) - HQ perspective
-    # ========================================
-    cat_search_stats = []
-    if cat_search:
-        if cat_search_franchise_id:
-            target_franchises_c = [Franchise.query.get(cat_search_franchise_id)]
-        else:
-            target_franchises_c = Franchise.query.filter_by(is_active=True).order_by(Franchise.name).all()
-
-        for franchise in target_franchises_c:
-            if not franchise:
-                continue
-            cat_names = [c.name for c in franchise.categories] if franchise.categories else []
-            if cat_search not in cat_names:
-                continue
-
-            product_ids = [p.id for p in Product.query.filter_by(
-                is_active=True, franchise_id=franchise.id, category=cat_search
-            ).all()]
-
-            stockin_qty = 0
-            shipment_qty = 0
-            if product_ids:
-                stockin_qty = db.session.query(func.sum(StockIn.quantity)).filter(
-                    StockIn.is_active == True, StockIn.product_id.in_(product_ids),
-                    StockIn.record_type == 'incoming',
-                    StockIn.stock_date >= date_from_parsed, StockIn.stock_date <= date_to_parsed
-                ).scalar() or 0
-
-                shipment_qty = db.session.query(func.sum(StockIn.quantity)).filter(
-                    StockIn.is_active == True, StockIn.product_id.in_(product_ids),
-                    StockIn.record_type == 'transfer',
-                    StockIn.stock_date >= date_from_parsed, StockIn.stock_date <= date_to_parsed
-                ).scalar() or 0
-
-            cat_search_stats.append({
-                'franchise': franchise,
-                'category': cat_search,
-                'stockin': stockin_qty,
-                'shipment': shipment_qty,
-                'stock': stockin_qty - shipment_qty
+        if branch_rows:
+            branch_groups.append({
+                'branch': branch_obj,
+                'rows': branch_rows,
+                'total_stockin': br_stockin,
+                'total_shipment': br_shipment,
+                'total_stock': br_stockin - br_shipment
             })
 
     # ========================================
-    # 중상별 검색 (Jungsung Search) - HQ perspective
+    # 입고사 검색 (Supplier Search) - HQ perspective
     # ========================================
-    jungsung_stats = []
-    if jungsung_id:
-        jungsung_obj = Jungsung.query.get(jungsung_id)
-
-        stores_query = Store.query.filter_by(jungsung_id=jungsung_id, is_active=True)
-        if jungsung_franchise_id:
-            stores_query = stores_query.filter_by(franchise_id=jungsung_franchise_id)
-        stores = stores_query.all()
-
-        if jungsung_franchise_id:
-            target_franchises_j = [Franchise.query.get(jungsung_franchise_id)]
+    supplier_stats = []
+    if supplier_id:
+        supplier_obj = Supplier.query.get(supplier_id)
+        if supplier_franchise_id:
+            target_franchises_s = [Franchise.query.get(supplier_franchise_id)]
         else:
-            target_franchises_j = Franchise.query.filter_by(is_active=True).order_by(Franchise.name).all()
+            target_franchises_s = Franchise.query.filter_by(is_active=True).order_by(Franchise.name).all()
 
-        for franchise in target_franchises_j:
+        for franchise in target_franchises_s:
             if not franchise:
                 continue
             cat_names = [c.name for c in franchise.categories] if franchise.categories else []
-            if jungsung_category:
-                cat_names = [c for c in cat_names if c == jungsung_category]
-
-            franchise_store_ids = [s.id for s in stores if s.franchise_id == franchise.id]
+            if supplier_category:
+                cat_names = [c for c in cat_names if c == supplier_category]
 
             for cat_name in sorted(cat_names):
                 product_ids = [p.id for p in Product.query.filter_by(
@@ -2423,49 +2428,22 @@ def hq_inventory():
                 ).all()]
 
                 stockin_qty = 0
-                shipment_qty = 0
                 if product_ids:
                     stockin_qty = db.session.query(func.sum(StockIn.quantity)).filter(
-                        StockIn.is_active == True, StockIn.product_id.in_(product_ids),
-                        StockIn.record_type == 'incoming',
+                        StockIn.is_active == True, StockIn.supplier_id == supplier_id,
+                        StockIn.product_id.in_(product_ids), StockIn.record_type == 'incoming',
                         StockIn.stock_date >= date_from_parsed, StockIn.stock_date <= date_to_parsed
                     ).scalar() or 0
 
-                    shipment_filters = [
-                        ShipmentItem.is_active == True,
-                        ShipmentItem.product_id.in_(product_ids),
-                    ]
-                    if franchise_store_ids:
-                        shipment_filters.append(
-                            or_(
-                                ShipmentItem.store_id.in_(franchise_store_ids),
-                                and_(ShipmentItem.jungsung_id == jungsung_id, ShipmentItem.store_id == None)
-                            )
-                        )
-                    else:
-                        shipment_filters.append(
-                            and_(ShipmentItem.jungsung_id == jungsung_id, ShipmentItem.store_id == None)
-                        )
-                    shipment_qty = db.session.query(func.sum(ShipmentItem.quantity)).filter(
-                        *shipment_filters,
-                        ShipmentItem.shipment_date >= date_from_parsed,
-                        ShipmentItem.shipment_date <= date_to_parsed
-                    ).scalar() or 0
+                if stockin_qty == 0:
+                    continue
 
-                jungsung_stats.append({
-                    'jungsung': jungsung_obj,
+                supplier_stats.append({
+                    'supplier': supplier_obj,
                     'franchise': franchise,
                     'category': cat_name,
                     'stockin': stockin_qty,
-                    'shipment': shipment_qty,
-                    'stock': stockin_qty - shipment_qty
                 })
-
-    # Get data for filter dropdowns
-    cat_franchise_map, all_category_names, franchises = _get_cat_franchise_map()
-    suppliers = Supplier.query.filter_by(is_active=True).order_by(Supplier.company_name).all()
-    branches = Branch.query.filter_by(is_active=True).order_by(Branch.name).all()
-    jungsungs = Jungsung.query.filter_by(is_active=True).order_by(Jungsung.business_name).all()
 
     return render_template('admin/hq_inventory.html',
                            year=period['year'], month=period['month'],
@@ -2473,13 +2451,11 @@ def hq_inventory():
                            period_type=period['period_type'],
                            total_stats=total_stats,
                            franchise_groups=franchise_groups,
-                           branch_stats=branch_stats,
-                           cat_search_stats=cat_search_stats,
-                           jungsung_stats=jungsung_stats,
+                           cat_groups=cat_groups,
+                           branch_groups=branch_groups,
                            supplier_stats=supplier_stats,
                            franchises=franchises,
                            branches=branches,
-                           jungsungs=jungsungs,
                            suppliers=suppliers,
                            cat_franchise_map_json=json.dumps(cat_franchise_map),
                            all_category_names=all_category_names,
@@ -2493,9 +2469,6 @@ def hq_inventory():
                                'branch_franchise_id': branch_franchise_id,
                                'cat_search': cat_search,
                                'cat_search_franchise_id': cat_search_franchise_id,
-                               'jungsung_id': jungsung_id,
-                               'jungsung_franchise_id': jungsung_franchise_id,
-                               'jungsung_category': jungsung_category,
                                'supplier_id': supplier_id,
                                'supplier_category': supplier_category,
                                'supplier_franchise_id': supplier_franchise_id,
@@ -2559,90 +2532,129 @@ def branch_inventory():
             'stock': total_stockin - total_shipment
         }
 
+    # Get data for filter dropdowns (needed by all sections)
+    cat_franchise_map, all_category_names, franchises = _get_cat_franchise_map()
+
     # ========================================
     # 프랜차이즈별검색 (Franchise Search) - Branch perspective
+    # Groups by franchise, each with category rows + subtotal
     # ========================================
     franchise_groups = []
-    if franchise_id and view_branch_id:
-        franchise_obj = Franchise.query.get(franchise_id)
-        franchise_cat_names = [c.name for c in franchise_obj.categories] if franchise_obj else []
-        if franchise_category:
-            franchise_cat_names = [c for c in franchise_cat_names if c == franchise_category]
-
-        product_stats = []
-        for cat_name in sorted(franchise_cat_names):
-            product_ids = [p.id for p in Product.query.filter_by(
-                is_active=True, franchise_id=franchise_id, category=cat_name
-            ).all()]
-
-            stockin_qty = 0
-            shipment_qty = 0
-            if product_ids:
-                stockin_qty = db.session.query(func.sum(StockIn.quantity)).filter(
-                    StockIn.is_active == True, StockIn.product_id.in_(product_ids),
-                    StockIn.branch_id == view_branch_id,
-                    StockIn.stock_date >= date_from_parsed, StockIn.stock_date <= date_to_parsed
-                ).scalar() or 0
-
-                shipment_qty = db.session.query(func.sum(ShipmentItem.quantity)).filter(
-                    ShipmentItem.is_active == True, ShipmentItem.product_id.in_(product_ids),
-                    ShipmentItem.branch_id == view_branch_id,
-                    ShipmentItem.shipment_date >= date_from_parsed, ShipmentItem.shipment_date <= date_to_parsed
-                ).scalar() or 0
-
-            product_stats.append({
-                'category': cat_name,
-                'stockin': stockin_qty,
-                'shipment': shipment_qty,
-                'stock': stockin_qty - shipment_qty
-            })
-
-        if product_stats:
-            franchise_groups.append({'franchise': franchise_obj, 'products': product_stats})
-
-    # ========================================
-    # 품목별검색 (Category Search)
-    # ========================================
-    cat_search_stats = []
-    if cat_search and view_branch_id:
-        if cat_search_franchise_id:
-            target_franchises = [Franchise.query.get(cat_search_franchise_id)]
+    if view_branch_id:
+        if franchise_id:
+            target_franchises_f = [f for f in franchises if f.id == franchise_id]
         else:
-            target_franchises = Franchise.query.filter_by(is_active=True).order_by(Franchise.name).all()
+            target_franchises_f = franchises
 
-        for franchise in target_franchises:
-            if not franchise:
-                continue
-            cat_names = [c.name for c in franchise.categories] if franchise.categories else []
-            if cat_search not in cat_names:
-                continue
+        for franchise_obj in target_franchises_f:
+            franchise_cat_names = [c.name for c in franchise_obj.categories] if franchise_obj.categories else []
+            if franchise_category:
+                franchise_cat_names = [c for c in franchise_cat_names if c == franchise_category]
 
-            product_ids = [p.id for p in Product.query.filter_by(
-                is_active=True, franchise_id=franchise.id, category=cat_search
-            ).all()]
+            product_stats = []
+            group_stockin = 0
+            group_shipment = 0
+            for cat_name in sorted(franchise_cat_names):
+                product_ids = [p.id for p in Product.query.filter_by(
+                    is_active=True, franchise_id=franchise_obj.id, category=cat_name
+                ).all()]
 
-            stockin_qty = 0
-            shipment_qty = 0
-            if product_ids:
-                stockin_qty = db.session.query(func.sum(StockIn.quantity)).filter(
-                    StockIn.is_active == True, StockIn.product_id.in_(product_ids),
-                    StockIn.record_type == 'transfer', StockIn.branch_id == view_branch_id,
-                    StockIn.stock_date >= date_from_parsed, StockIn.stock_date <= date_to_parsed
-                ).scalar() or 0
+                stockin_qty = 0
+                shipment_qty = 0
+                if product_ids:
+                    stockin_qty = db.session.query(func.sum(StockIn.quantity)).filter(
+                        StockIn.is_active == True, StockIn.product_id.in_(product_ids),
+                        StockIn.record_type == 'transfer', StockIn.branch_id == view_branch_id,
+                        StockIn.stock_date >= date_from_parsed, StockIn.stock_date <= date_to_parsed
+                    ).scalar() or 0
 
-                shipment_qty = db.session.query(func.sum(ShipmentItem.quantity)).filter(
-                    ShipmentItem.is_active == True, ShipmentItem.product_id.in_(product_ids),
-                    ShipmentItem.branch_id == view_branch_id,
-                    ShipmentItem.shipment_date >= date_from_parsed, ShipmentItem.shipment_date <= date_to_parsed
-                ).scalar() or 0
+                    shipment_qty = db.session.query(func.sum(ShipmentItem.quantity)).filter(
+                        ShipmentItem.is_active == True, ShipmentItem.product_id.in_(product_ids),
+                        ShipmentItem.branch_id == view_branch_id,
+                        ShipmentItem.shipment_date >= date_from_parsed, ShipmentItem.shipment_date <= date_to_parsed
+                    ).scalar() or 0
 
-            cat_search_stats.append({
-                'franchise': franchise,
-                'category': cat_search,
-                'stockin': stockin_qty,
-                'shipment': shipment_qty,
-                'stock': stockin_qty - shipment_qty
-            })
+                if stockin_qty == 0 and shipment_qty == 0:
+                    continue
+
+                product_stats.append({
+                    'category': cat_name,
+                    'stockin': stockin_qty,
+                    'shipment': shipment_qty,
+                    'stock': stockin_qty - shipment_qty
+                })
+                group_stockin += stockin_qty
+                group_shipment += shipment_qty
+
+            if product_stats:
+                franchise_groups.append({
+                    'franchise': franchise_obj,
+                    'products': product_stats,
+                    'total_stockin': group_stockin,
+                    'total_shipment': group_shipment,
+                    'total_stock': group_stockin - group_shipment
+                })
+
+    # ========================================
+    # 품목별검색 (Category Search) - Branch perspective
+    # Groups by category, each with franchise rows + subtotal
+    # ========================================
+    cat_groups = []
+    if view_branch_id:
+        if cat_search:
+            target_cats = [cat_search]
+        else:
+            target_cats = all_category_names
+
+        for cat_name in sorted(target_cats):
+            if cat_search_franchise_id:
+                target_franchises_c = [f for f in franchises if f.id == cat_search_franchise_id]
+            else:
+                target_franchises_c = [f for f in franchises if cat_name in [c.name for c in f.categories]]
+
+            cat_rows = []
+            cat_stockin = 0
+            cat_shipment = 0
+            for franchise in target_franchises_c:
+                product_ids = [p.id for p in Product.query.filter_by(
+                    is_active=True, franchise_id=franchise.id, category=cat_name
+                ).all()]
+
+                stockin_qty = 0
+                shipment_qty = 0
+                if product_ids:
+                    stockin_qty = db.session.query(func.sum(StockIn.quantity)).filter(
+                        StockIn.is_active == True, StockIn.product_id.in_(product_ids),
+                        StockIn.record_type == 'transfer', StockIn.branch_id == view_branch_id,
+                        StockIn.stock_date >= date_from_parsed, StockIn.stock_date <= date_to_parsed
+                    ).scalar() or 0
+
+                    shipment_qty = db.session.query(func.sum(ShipmentItem.quantity)).filter(
+                        ShipmentItem.is_active == True, ShipmentItem.product_id.in_(product_ids),
+                        ShipmentItem.branch_id == view_branch_id,
+                        ShipmentItem.shipment_date >= date_from_parsed, ShipmentItem.shipment_date <= date_to_parsed
+                    ).scalar() or 0
+
+                if stockin_qty == 0 and shipment_qty == 0:
+                    continue
+
+                cat_rows.append({
+                    'franchise': franchise,
+                    'stockin': stockin_qty,
+                    'shipment': shipment_qty,
+                    'stock': stockin_qty - shipment_qty
+                })
+                cat_stockin += stockin_qty
+                cat_shipment += shipment_qty
+
+            if cat_rows:
+                cat_groups.append({
+                    'category': cat_name,
+                    'rows': cat_rows,
+                    'total_stockin': cat_stockin,
+                    'total_shipment': cat_shipment,
+                    'total_stock': cat_stockin - cat_shipment
+                })
 
     # ========================================
     # 중상 검색 (Jungsung Search)
@@ -2715,6 +2727,9 @@ def branch_inventory():
                         if qty_dict and cat_name in qty_dict:
                             erp_registered += qty_dict[cat_name]
 
+                if shipment_qty == 0 and erp_registered == 0:
+                    continue
+
                 jungsung_stats.append({
                     'jungsung': jungsung_obj,
                     'franchise': franchise,
@@ -2723,9 +2738,6 @@ def branch_inventory():
                     'erp_registered': erp_registered,
                     'erp_unregistered': shipment_qty - erp_registered
                 })
-
-    # Get data for filter dropdowns
-    cat_franchise_map, all_category_names, franchises = _get_cat_franchise_map()
 
     if current_user.is_admin():
         branches = Branch.query.filter_by(is_active=True).order_by(Branch.name).all()
@@ -2744,7 +2756,7 @@ def branch_inventory():
                            view_branch_id=view_branch_id,
                            view_branch_obj=view_branch_obj,
                            franchise_groups=franchise_groups,
-                           cat_search_stats=cat_search_stats,
+                           cat_groups=cat_groups,
                            jungsung_stats=jungsung_stats,
                            franchises=franchises,
                            branches=branches,
