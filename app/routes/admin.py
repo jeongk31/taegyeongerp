@@ -4217,13 +4217,23 @@ def erp_registration():
     categories = Category.query.filter_by(is_active=True).order_by(Category.id).all()
 
     # Build franchise -> allowed category names mapping
+    # and franchise -> category -> unit_price mapping
     franchise_cat_names = {}
+    franchise_cat_prices = {}  # {franchise_id: {cat_name: unit_price}}
     for fid, group in franchise_groups.items():
         franchise = group['franchise']
         if franchise:
             franchise_cat_names[fid] = [cat.name for cat in franchise.categories]
+            # Get unit prices per category for this franchise
+            prices = {}
+            products = Product.query.filter_by(is_active=True, franchise_id=fid).all()
+            for p in products:
+                if p.category not in prices:
+                    prices[p.category] = p.unit_price
+            franchise_cat_prices[fid] = prices
         else:
             franchise_cat_names[fid] = []
+            franchise_cat_prices[fid] = {}
 
     return render_template('admin/erp_registration.html',
                            registration_date=registration_date,
@@ -4231,7 +4241,8 @@ def erp_registration():
                            franchise_groups=franchise_groups,
                            reg_by_store=reg_by_store,
                            categories=categories,
-                           franchise_cat_names=franchise_cat_names)
+                           franchise_cat_names=franchise_cat_names,
+                           franchise_cat_prices=franchise_cat_prices)
 
 
 @admin_bp.route('/erp-registration/complete', methods=['POST'])

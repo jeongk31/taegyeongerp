@@ -86,6 +86,38 @@
         margin-bottom: 2px;
     }
     .cat-label.waste { color: #dc3545; }
+    .cat-price {
+        font-size: 0.65rem;
+        color: #0d6efd;
+        font-weight: 500;
+    }
+    .cat-label.waste + .cat-price,
+    .cat-price.waste { color: #e85d04; }
+
+    /* Price table */
+    .price-table-wrap {
+        margin-bottom: 1rem;
+    }
+    .price-table {
+        font-size: 0.8rem;
+        width: 100%;
+    }
+    .price-table th {
+        background: #f8f9fa;
+        padding: 0.3rem 0.5rem;
+        font-weight: 600;
+    }
+    .price-table td {
+        padding: 0.3rem 0.5rem;
+        text-align: center;
+    }
+    .price-table .price-val {
+        color: #0d6efd;
+        font-weight: 600;
+    }
+    .price-table .price-val.waste {
+        color: #e85d04;
+    }
     .cat-input {
         width: 100%;
         text-align: center;
@@ -178,8 +210,39 @@
         </button>
     </div>
 
+    <!-- Price reference table -->
+    <div class="price-table-wrap">
+        <table class="table table-sm table-bordered price-table mb-0">
+            <thead>
+                <tr>
+                    <th class="text-start">프랜차이즈</th>
+                    {% for cat in categories %}
+                    <th>{{ cat.name }}</th>
+                    {% endfor %}
+                </tr>
+            </thead>
+            <tbody>
+                {% for franchise_id, group in franchise_groups.items() %}
+                {% set prices = franchise_cat_prices.get(franchise_id, {}) %}
+                {% set allowed_cats = franchise_cat_names.get(franchise_id, []) %}
+                <tr>
+                    <td class="text-start" style="font-weight:600;">{{ group.franchise.name if group.franchise else '-' }}</td>
+                    {% for cat in categories %}
+                    <td>
+                        {% if cat.name in allowed_cats and prices.get(cat.name) %}
+                        <span class="price-val {% if cat.is_waste %}waste{% endif %}">{{ "{:,}".format(prices[cat.name]) }}</span>
+                        {% else %}-{% endif %}
+                    </td>
+                    {% endfor %}
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
     {% for franchise_id, group in franchise_groups.items() %}
     {% set allowed_cats = franchise_cat_names.get(franchise_id, []) %}
+    {% set prices = franchise_cat_prices.get(franchise_id, {}) %}
     <div class="franchise-section">
         <div class="franchise-title">{{ group.franchise.name if group.franchise else '-' }}</div>
         {% for store in group.stores %}
@@ -192,6 +255,9 @@
                 {% if cat.name in allowed_cats %}
                 <div class="cat-item">
                     <span class="cat-label {% if cat.is_waste %}waste{% endif %}">{{ cat.name }}</span>
+                    {% if prices.get(cat.name) %}
+                    <span class="cat-price {% if cat.is_waste %}waste{% endif %}">({{ "{:,}".format(prices[cat.name]) }})</span>
+                    {% endif %}
                     <input type="number" class="cat-input category-input"
                            value="{{ qty_dict.get(cat.name, '') }}"
                            data-store-id="{{ store.id }}"
