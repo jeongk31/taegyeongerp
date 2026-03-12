@@ -418,7 +418,69 @@
         }
 
         function printTable() {
-            window.print();
+            // Find the visible table (dailyTable, weeklyTable, etc.)
+            const tables = document.querySelectorAll('.tracking-table, table[id]');
+            let targetTable = null;
+            for (const t of tables) {
+                if (t.offsetParent !== null || t.offsetWidth > 0) {
+                    targetTable = t;
+                    break;
+                }
+            }
+            if (!targetTable) {
+                window.print();
+                return;
+            }
+
+            const button = event?.target?.closest('button');
+            const originalHTML = button?.innerHTML;
+            if (button) {
+                button.disabled = true;
+                button.innerHTML = '<span class="spinner-border spinner-border-sm"></span> 인쇄 준비중...';
+            }
+
+            html2canvas(targetTable, {
+                scale: 3,
+                logging: false,
+                useCORS: true,
+                allowTaint: true,
+                backgroundColor: '#ffffff',
+                windowWidth: targetTable.scrollWidth,
+                windowHeight: targetTable.scrollHeight,
+                onclone: function(clonedDoc) {
+                    const clonedEl = clonedDoc.getElementById(targetTable.id);
+                    if (clonedEl) {
+                        clonedEl.style.display = 'table';
+                        clonedEl.style.width = 'auto';
+                    }
+                }
+            }).then(canvas => {
+                const printWin = window.open('', '_blank');
+                printWin.document.write(`
+                    <html><head><title>인쇄</title>
+                    <style>
+                        @page { size: landscape; margin: 5mm; }
+                        body { margin: 0; }
+                        img { width: 100%; height: auto; }
+                    </style>
+                    </head><body>
+                    <img src="${canvas.toDataURL('image/png', 1.0)}" onload="window.print(); window.close();">
+                    </body></html>
+                `);
+                printWin.document.close();
+
+                if (button) {
+                    button.disabled = false;
+                    button.innerHTML = originalHTML;
+                }
+            }).catch(error => {
+                console.error('인쇄 오류:', error);
+                window.print();
+                if (button) {
+                    button.disabled = false;
+                    button.innerHTML = originalHTML;
+                }
+            });
         }
     </script>
 
