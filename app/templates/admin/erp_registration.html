@@ -210,36 +210,6 @@
         </button>
     </div>
 
-    <!-- Price reference table -->
-    <div class="price-table-wrap">
-        <table class="table table-sm table-bordered price-table mb-0">
-            <thead>
-                <tr>
-                    <th class="text-start">프랜차이즈</th>
-                    {% for cat in categories %}
-                    <th>{{ cat.name }}</th>
-                    {% endfor %}
-                </tr>
-            </thead>
-            <tbody>
-                {% for franchise_id, group in franchise_groups.items() %}
-                {% set prices = franchise_cat_prices.get(franchise_id, {}) %}
-                {% set allowed_cats = franchise_cat_names.get(franchise_id, []) %}
-                <tr>
-                    <td class="text-start" style="font-weight:600;">{{ group.franchise.name if group.franchise else '-' }}</td>
-                    {% for cat in categories %}
-                    <td>
-                        {% if cat.name in allowed_cats and prices.get(cat.name) %}
-                        <span class="price-val {% if cat.is_waste %}waste{% endif %}">{{ "{:,}".format(prices[cat.name]) }}</span>
-                        {% else %}-{% endif %}
-                    </td>
-                    {% endfor %}
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
-    </div>
-
     {% for franchise_id, group in franchise_groups.items() %}
     {% set allowed_cats = franchise_cat_names.get(franchise_id, []) %}
     {% set prices = franchise_cat_prices.get(franchise_id, {}) %}
@@ -273,6 +243,37 @@
     {% else %}
     <div class="text-center text-muted py-4">담당 매장이 없습니다.</div>
     {% endfor %}
+
+    <!-- Price reference table -->
+    <div class="price-table-wrap" style="margin-top: 1.5rem;">
+        <div style="font-weight:600; font-size:0.85rem; margin-bottom:0.3rem; color:#666;">품목별 단가</div>
+        <table class="table table-sm table-bordered price-table mb-0">
+            <thead>
+                <tr>
+                    <th class="text-start">프랜차이즈</th>
+                    {% for cat in categories %}
+                    <th>{{ cat.name }}</th>
+                    {% endfor %}
+                </tr>
+            </thead>
+            <tbody>
+                {% for franchise_id, group in franchise_groups.items() %}
+                {% set prices = franchise_cat_prices.get(franchise_id, {}) %}
+                {% set allowed_cats = franchise_cat_names.get(franchise_id, []) %}
+                <tr>
+                    <td class="text-start" style="font-weight:600;">{{ group.franchise.name if group.franchise else '-' }}</td>
+                    {% for cat in categories %}
+                    <td>
+                        {% if cat.name in allowed_cats and prices.get(cat.name) %}
+                        <span class="price-val {% if cat.is_waste %}waste{% endif %}">{{ "{:,}".format(prices[cat.name]) }}</span>
+                        {% else %}-{% endif %}
+                    </td>
+                    {% endfor %}
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
 </div>
 
 <!-- Sticky save bar (hidden by default) -->
