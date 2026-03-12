@@ -291,7 +291,7 @@
             <div class="col-md-2">
                 <label class="form-label mb-1">중상</label>
                 <select name="jungsung_id" class="form-select form-select-sm">
-                    <option value="">선택</option>
+                    <option value="">전체</option>
                     {% for jungsung in jungsungs %}
                     <option value="{{ jungsung.id }}" {% if filters.jungsung_id == jungsung.id %}selected{% endif %}>{{ jungsung.business_name }}</option>
                     {% endfor %}
@@ -319,7 +319,7 @@
                 <button type="submit" class="btn btn-sm btn-primary">검색</button>
             </div>
         </form>
-        {% if filters.jungsung_id %}
+        {% if jungsung_groups %}
         <div class="table-responsive">
             <table id="jungsungInventoryTable" class="table table-sm table-bordered mb-0" style="font-size: 0.85rem;">
                 <thead class="table-light">
@@ -333,26 +333,33 @@
                     </tr>
                 </thead>
                 <tbody>
-                    {% for stat in jungsung_stats %}
+                    {% for group in jungsung_groups %}
+                    {% for row in group.rows %}
                     <tr>
-                        <td>{{ stat.jungsung.business_name if stat.jungsung else '-' }}</td>
-                        <td>{{ stat.franchise.name if stat.franchise else '-' }}</td>
-                        <td>{{ stat.category }}</td>
-                        <td class="text-end">{{ '{:,}'.format(stat.shipment) }}</td>
-                        <td class="text-end">{{ '{:,}'.format(stat.erp_registered) }}</td>
-                        <td class="text-end table-warning">{{ '{:,}'.format(stat.erp_unregistered) }}</td>
+                        {% if loop.first %}
+                        <td rowspan="{{ group.rows|length + 1 }}" class="align-middle fw-bold">{{ group.jungsung.business_name if group.jungsung else '-' }}</td>
+                        {% endif %}
+                        <td>{{ row.franchise.name if row.franchise else '-' }}</td>
+                        <td>{{ row.category }}</td>
+                        <td class="text-end">{{ '{:,}'.format(row.shipment) }}</td>
+                        <td class="text-end">{{ '{:,}'.format(row.erp_registered) }}</td>
+                        <td class="text-end table-warning">{{ '{:,}'.format(row.erp_unregistered) }}</td>
+                    </tr>
+                    {% endfor %}
+                    <tr class="table-secondary fw-bold" style="border-bottom: 2px solid #000;">
+                        <td colspan="2" class="text-end">소계</td>
+                        <td class="text-end">{{ '{:,}'.format(group.total_shipment) }}</td>
+                        <td class="text-end">{{ '{:,}'.format(group.total_erp) }}</td>
+                        <td class="text-end">{{ '{:,}'.format(group.total_unregistered) }}</td>
                     </tr>
                     {% endfor %}
                 </tbody>
             </table>
         </div>
-        {% if not jungsung_stats %}
-        <p class="text-muted text-center mb-0 mt-2">데이터가 없습니다.</p>
-        {% endif %}
         {% else %}
-        <p class="text-muted text-center mb-0">중상을 선택해주세요.</p>
+        <p class="text-muted text-center mb-0">데이터가 없습니다.</p>
         {% endif %}
-        {% if jungsung_stats %}
+        {% if jungsung_groups %}
         <div class="mt-2">
             <small class="text-muted">* 폐유는 ERP 등록 수량에 포함되지 않습니다.</small>
         </div>
