@@ -2407,23 +2407,25 @@ def hq_inventory():
     # ========================================
     # 입고사 검색 (Supplier Search) - HQ perspective
     # ========================================
-    supplier_groups = []
     if supplier_id:
-        supplier_obj = Supplier.query.get(supplier_id)
-        if supplier_franchise_id:
-            target_franchises_s = [Franchise.query.get(supplier_franchise_id)]
-        else:
-            target_franchises_s = Franchise.query.filter_by(is_active=True).order_by(Franchise.name).all()
+        target_suppliers = [s for s in suppliers if s.id == supplier_id]
+    else:
+        target_suppliers = suppliers
 
+    supplier_groups = []
+    for supplier_obj in target_suppliers:
+        if supplier_franchise_id:
+            target_franchises_s = [f for f in franchises if f.id == supplier_franchise_id]
+        else:
+            target_franchises_s = franchises
+
+        supplier_rows = []
+        group_stockin = 0
         for franchise in target_franchises_s:
-            if not franchise:
-                continue
             cat_names = [c.name for c in franchise.categories] if franchise.categories else []
             if supplier_category:
                 cat_names = [c for c in cat_names if c == supplier_category]
 
-            franchise_rows = []
-            group_stockin = 0
             for cat_name in sorted(cat_names):
                 product_ids = [p.id for p in Product.query.filter_by(
                     is_active=True, franchise_id=franchise.id, category=cat_name
@@ -2432,7 +2434,7 @@ def hq_inventory():
                 stockin_qty = 0
                 if product_ids:
                     stockin_qty = db.session.query(func.sum(StockIn.quantity)).filter(
-                        StockIn.is_active == True, StockIn.supplier_id == supplier_id,
+                        StockIn.is_active == True, StockIn.supplier_id == supplier_obj.id,
                         StockIn.product_id.in_(product_ids), StockIn.record_type == 'incoming',
                         StockIn.stock_date >= date_from_parsed, StockIn.stock_date <= date_to_parsed
                     ).scalar() or 0
@@ -2440,19 +2442,19 @@ def hq_inventory():
                 if stockin_qty == 0:
                     continue
 
-                franchise_rows.append({
+                supplier_rows.append({
+                    'franchise': franchise,
                     'category': cat_name,
                     'stockin': stockin_qty,
                 })
                 group_stockin += stockin_qty
 
-            if franchise_rows:
-                supplier_groups.append({
-                    'supplier': supplier_obj,
-                    'franchise': franchise,
-                    'rows': franchise_rows,
-                    'total_stockin': group_stockin,
-                })
+        if supplier_rows:
+            supplier_groups.append({
+                'supplier': supplier_obj,
+                'rows': supplier_rows,
+                'total_stockin': group_stockin,
+            })
 
     return render_template('admin/hq_inventory.html',
                            year=period['year'], month=period['month'],

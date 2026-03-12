@@ -346,7 +346,7 @@
             <div class="col-md-2">
                 <label class="form-label mb-1">입고사</label>
                 <select name="supplier_id" class="form-select form-select-sm">
-                    <option value="">선택</option>
+                    <option value="">전체</option>
                     {% for supplier in suppliers %}
                     <option value="{{ supplier.id }}" {% if filters.supplier_id == supplier.id %}selected{% endif %}>{{ supplier.company_name }}</option>
                     {% endfor %}
@@ -374,11 +374,12 @@
                 <button type="submit" class="btn btn-sm btn-primary">검색</button>
             </div>
         </form>
-        {% if filters.supplier_id %}
+        {% if supplier_groups %}
         <div class="table-responsive">
             <table id="supplierInventoryTable" class="table table-sm table-bordered mb-0" style="font-size: 0.85rem;">
                 <thead class="table-light">
                     <tr>
+                        <th>입고사</th>
                         <th>프랜차이즈</th>
                         <th>품목</th>
                         <th class="text-end">입고수량</th>
@@ -389,25 +390,23 @@
                     {% for row in group.rows %}
                     <tr>
                         {% if loop.first %}
-                        <td rowspan="{{ group.rows|length + 1 }}" class="align-middle fw-bold">{{ group.franchise.name if group.franchise else '-' }}</td>
+                        <td rowspan="{{ group.rows|length + 1 }}" class="align-middle fw-bold">{{ group.supplier.company_name if group.supplier else '-' }}</td>
                         {% endif %}
+                        <td>{{ row.franchise.name if row.franchise else '-' }}</td>
                         <td>{{ row.category }}</td>
                         <td class="text-end">{{ '{:,}'.format(row.stockin) }}</td>
                     </tr>
                     {% endfor %}
                     <tr class="table-secondary fw-bold" style="border-bottom: 2px solid #000;">
-                        <td class="text-end">소계</td>
+                        <td colspan="2" class="text-end">소계</td>
                         <td class="text-end">{{ '{:,}'.format(group.total_stockin) }}</td>
                     </tr>
                     {% endfor %}
                 </tbody>
             </table>
         </div>
-        {% if not supplier_groups %}
-        <p class="text-muted text-center mb-0 mt-2">데이터가 없습니다.</p>
-        {% endif %}
         {% else %}
-        <p class="text-muted text-center mb-0">입고사를 선택해주세요.</p>
+        <p class="text-muted text-center mb-0">데이터가 없습니다.</p>
         {% endif %}
     </div>
 </div>
