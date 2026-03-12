@@ -3904,24 +3904,43 @@ def erp_tracking_admin():
         # Daily calendar: year/month/week selector, Mon-Sun columns
         daily_weeks = build_month_weeks(year, month)
 
-        daily_week_num = request.args.get('week', type=int) or 1
+        daily_week_num = request.args.get('week', type=int) or 0  # 0 = 전체 (default)
         if daily_week_num > len(daily_weeks):
             daily_week_num = len(daily_weeks)
-        selected_week = daily_weeks[daily_week_num - 1]
 
         weekday_names = ['월', '화', '수', '목', '금', '토', '일']
-        current_d = selected_week['start']
-        while current_d <= selected_week['end']:
-            daily_days.append({
-                'date': current_d,
-                'weekday': weekday_names[current_d.weekday()],
-                'label': current_d.strftime('%m/%d')
-            })
-            current_d += timedelta(days=1)
+
+        if daily_week_num == 0:
+            # 전체: show all days in the month
+            first_day = date(year, month, 1)
+            from calendar import monthrange as mr
+            last_day = date(year, month, mr(year, month)[1])
+            current_d = first_day
+            while current_d <= last_day:
+                daily_days.append({
+                    'date': current_d,
+                    'weekday': weekday_names[current_d.weekday()],
+                    'label': current_d.strftime('%m/%d')
+                })
+                current_d += timedelta(days=1)
+            overall_start = first_day
+            overall_end = last_day
+        else:
+            selected_week = daily_weeks[daily_week_num - 1]
+            current_d = selected_week['start']
+            while current_d <= selected_week['end']:
+                daily_days.append({
+                    'date': current_d,
+                    'weekday': weekday_names[current_d.weekday()],
+                    'label': current_d.strftime('%m/%d')
+                })
+                current_d += timedelta(days=1)
+            overall_start = selected_week['start']
+            overall_end = selected_week['end']
 
         day_periods = [{'start': d['date'], 'end': d['date']} for d in daily_days]
         raw_data = batch_build_store_data(stores, day_periods, regular_product_ids,
-                                          selected_week['start'], selected_week['end'])
+                                          overall_start, overall_end)
         for item in raw_data:
             item['days'] = item.pop('period_data')
         daily_data = raw_data

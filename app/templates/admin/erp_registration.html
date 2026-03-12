@@ -142,6 +142,39 @@
     let isEditing = false;
     let originalValues = {};
 
+    // Check if all values are empty/0 → auto enable inputs (first-time entry)
+    function checkAutoEdit() {
+        const inputs = document.querySelectorAll('.category-input');
+        const allEmpty = Array.from(inputs).every(input => !input.value || input.value === '0');
+        if (allEmpty && inputs.length > 0) {
+            // Enable all inputs directly without showing save/cancel yet
+            inputs.forEach(input => { input.disabled = false; });
+            document.getElementById('editBtn').classList.add('d-none');
+            isEditing = true;
+        }
+    }
+
+    // Show save/cancel buttons when user types a value
+    function onInputChange() {
+        if (!isEditing) return;
+        const inputs = document.querySelectorAll('.category-input');
+        const hasValue = Array.from(inputs).some(input => input.value && parseInt(input.value) > 0);
+        if (hasValue) {
+            document.getElementById('saveBtn').classList.remove('d-none');
+            document.getElementById('cancelBtn').classList.remove('d-none');
+        } else {
+            document.getElementById('saveBtn').classList.add('d-none');
+            document.getElementById('cancelBtn').classList.add('d-none');
+        }
+    }
+
+    document.addEventListener('DOMContentLoaded', function() {
+        checkAutoEdit();
+        document.querySelectorAll('.category-input').forEach(input => {
+            input.addEventListener('input', onInputChange);
+        });
+    });
+
     function changeDate() {
         const newDate = document.getElementById('registration-date').value;
         if (newDate) {
