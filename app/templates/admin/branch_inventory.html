@@ -157,11 +157,11 @@
                         <td class="text-end table-warning">{{ '{:,}'.format(product_stat.stock) }}</td>
                     </tr>
                     {% endfor %}
-                    <tr class="table-secondary fw-bold">
+                    <tr class="table-secondary fw-bold" style="border-bottom: 2px solid #000;">
                         <td class="text-end">소계</td>
                         <td class="text-end">{{ '{:,}'.format(group.total_stockin) }}</td>
                         <td class="text-end">{{ '{:,}'.format(group.total_shipment) }}</td>
-                        <td class="text-end table-warning">{{ '{:,}'.format(group.total_stock) }}</td>
+                        <td class="text-end">{{ '{:,}'.format(group.total_stock) }}</td>
                     </tr>
                     {% endfor %}
                 </tbody>
@@ -246,11 +246,11 @@
                         <td class="text-end table-warning">{{ '{:,}'.format(row.stock) }}</td>
                     </tr>
                     {% endfor %}
-                    <tr class="table-secondary fw-bold">
+                    <tr class="table-secondary fw-bold" style="border-bottom: 2px solid #000;">
                         <td class="text-end">소계</td>
                         <td class="text-end">{{ '{:,}'.format(group.total_stockin) }}</td>
                         <td class="text-end">{{ '{:,}'.format(group.total_shipment) }}</td>
-                        <td class="text-end table-warning">{{ '{:,}'.format(group.total_stock) }}</td>
+                        <td class="text-end">{{ '{:,}'.format(group.total_stock) }}</td>
                     </tr>
                     {% endfor %}
                 </tbody>

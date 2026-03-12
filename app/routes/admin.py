@@ -2407,7 +2407,7 @@ def hq_inventory():
     # ========================================
     # 입고사 검색 (Supplier Search) - HQ perspective
     # ========================================
-    supplier_stats = []
+    supplier_groups = []
     if supplier_id:
         supplier_obj = Supplier.query.get(supplier_id)
         if supplier_franchise_id:
@@ -2422,6 +2422,8 @@ def hq_inventory():
             if supplier_category:
                 cat_names = [c for c in cat_names if c == supplier_category]
 
+            franchise_rows = []
+            group_stockin = 0
             for cat_name in sorted(cat_names):
                 product_ids = [p.id for p in Product.query.filter_by(
                     is_active=True, franchise_id=franchise.id, category=cat_name
@@ -2438,11 +2440,18 @@ def hq_inventory():
                 if stockin_qty == 0:
                     continue
 
-                supplier_stats.append({
-                    'supplier': supplier_obj,
-                    'franchise': franchise,
+                franchise_rows.append({
                     'category': cat_name,
                     'stockin': stockin_qty,
+                })
+                group_stockin += stockin_qty
+
+            if franchise_rows:
+                supplier_groups.append({
+                    'supplier': supplier_obj,
+                    'franchise': franchise,
+                    'rows': franchise_rows,
+                    'total_stockin': group_stockin,
                 })
 
     return render_template('admin/hq_inventory.html',
@@ -2453,7 +2462,7 @@ def hq_inventory():
                            franchise_groups=franchise_groups,
                            cat_groups=cat_groups,
                            branch_groups=branch_groups,
-                           supplier_stats=supplier_stats,
+                           supplier_groups=supplier_groups,
                            franchises=franchises,
                            branches=branches,
                            suppliers=suppliers,
