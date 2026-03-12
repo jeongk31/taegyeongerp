@@ -233,9 +233,7 @@
             row.querySelectorAll('.category-input').forEach(input => {
                 const category = input.dataset.category;
                 const value = parseInt(input.value) || 0;
-                if (value > 0) {
-                    quantities[category] = value;
-                }
+                quantities[category] = value;
             });
 
             promises.push(
