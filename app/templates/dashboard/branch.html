@@ -281,7 +281,7 @@
                         <td>{{ shipment.product.name if shipment.product else '-' }}</td>
                         <td><span class="badge bg-warning">{{ "{:,}".format(shipment.quantity) }}</span></td>
                         <td>{{ shipment.store.name if shipment.store else '-' }}</td>
-                        <td>{{ shipment.jungsung.business_name if shipment.jungsung else '-' }}</td>
+                        <td>{{ (shipment.jungsung.contact_person or shipment.jungsung.business_name) if shipment.jungsung else '-' }}</td>
                     </tr>
                     {% else %}
                     <tr>

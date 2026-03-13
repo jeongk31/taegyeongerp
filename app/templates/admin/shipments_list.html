@@ -64,7 +64,7 @@
                         <select name="jungsung_id" class="form-select form-select-sm" style="font-size: 0.8rem;">
                             <option value="">전체</option>
                             {% for jungsung in jungsungs %}
-                            <option value="{{ jungsung.id }}" {% if filters.jungsung_id == jungsung.id %}selected{% endif %}>{{ jungsung.business_name }}</option>
+                            <option value="{{ jungsung.id }}" {% if filters.jungsung_id == jungsung.id %}selected{% endif %}>{{ jungsung.contact_person or jungsung.business_name }}</option>
                             {% endfor %}
                         </select>
                     </div>
@@ -135,7 +135,7 @@
                         <td>{{ item.branch.name if item.branch else '-' }}</td>
                         {% else %}
                         <td>{{ item.shipment_date.strftime('%Y-%m-%d') }}</td>
-                        <td>{{ item.jungsung.business_name if item.jungsung else '-' }}</td>
+                        <td>{{ (item.jungsung.contact_person or item.jungsung.business_name) if item.jungsung else '-' }}</td>
                         {% endif %}
                         <td>{{ item.product.category }}</td>
                         <td>{{ item.product.franchise.name if item.product.franchise else '-' }}</td>
@@ -199,7 +199,7 @@
                             <select name="jungsung_id" id="modal_jungsung_id" class="form-select">
                                 <option value="">선택</option>
                                 {% for jungsung in jungsungs %}
-                                <option value="{{ jungsung.id }}">{{ jungsung.business_name }}</option>
+                                <option value="{{ jungsung.id }}">{{ jungsung.contact_person or jungsung.business_name }}</option>
                                 {% endfor %}
                             </select>
                         </div>

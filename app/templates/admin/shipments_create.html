@@ -36,7 +36,7 @@
                     <select id="add_jungsung_id" class="form-select form-select-sm">
                         <option value="">선택</option>
                         {% for jungsung in jungsungs %}
-                        <option value="{{ jungsung.id }}">{{ jungsung.business_name }}</option>
+                        <option value="{{ jungsung.id }}">{{ jungsung.contact_person or jungsung.business_name }}</option>
                         {% endfor %}
                     </select>
                 </div>

@@ -56,9 +56,9 @@
                     <tr>
                         <td class="id-cell">{{ store.id }}</td>
                         <td>{{ store.franchise.name if store.franchise else '-' }}</td>
-                        <td><a href="#" class="text-decoration-none" onclick='openDetailModal({{ (store.franchise.name if store.franchise else "-")|tojson }}, {{ store.name|tojson }}, {{ (store.branch.name if store.branch else "-")|tojson }}, {{ (store.jungsung.business_name if store.jungsung else "-")|tojson }}, {{ (store.owner_name if store.owner_name else "-")|tojson }}, {{ (store.owner_phone or "-")|tojson }}, {{ (store.address if store.address else "-")|tojson }}, {{ (store.memo or "-")|tojson }}); return false;'>{{ store.name }}</a></td>
+                        <td><a href="#" class="text-decoration-none" onclick='openDetailModal({{ (store.franchise.name if store.franchise else "-")|tojson }}, {{ store.name|tojson }}, {{ (store.branch.name if store.branch else "-")|tojson }}, {{ ((store.jungsung.contact_person or store.jungsung.business_name) if store.jungsung else "-")|tojson }}, {{ (store.owner_name if store.owner_name else "-")|tojson }}, {{ (store.owner_phone or "-")|tojson }}, {{ (store.address if store.address else "-")|tojson }}, {{ (store.memo or "-")|tojson }}); return false;'>{{ store.name }}</a></td>
                         <td>{{ store.branch.name if store.branch else '-' }}</td>
-                        <td>{{ store.jungsung.business_name if store.jungsung else '-' }}</td>
+                        <td>{{ (store.jungsung.contact_person or store.jungsung.business_name) if store.jungsung else '-' }}</td>
                         <td class="text-center">
                             {% if store.no_shipment_2months %}<span class="status-marker status-danger"></span>{% endif %}
                         </td>
@@ -142,7 +142,7 @@
                             <select name="jungsung_id" id="modal_jungsung_id" class="form-select">
                                 <option value="">선택</option>
                                 {% for jungsung in jungsungs %}
-                                <option value="{{ jungsung.id }}" data-branch="{{ jungsung.branch_id }}">{{ jungsung.business_name }}</option>
+                                <option value="{{ jungsung.id }}" data-branch="{{ jungsung.branch_id }}">{{ jungsung.contact_person or jungsung.business_name }}</option>
                                 {% endfor %}
                             </select>
                         </div>

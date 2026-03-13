@@ -107,7 +107,7 @@
                 <tbody>
                     {% for row in jungsung_grouped_data %}
                     <tr>
-                        <td class="text-start franchise-col">{{ row.jungsung.business_name }}</td>
+                        <td class="text-start franchise-col">{{ row.jungsung.contact_person or row.jungsung.business_name }}</td>
                         {% for f in all_franchises %}
                         <td>{{ "{:,}".format(row.franchises[f.id].qty) }}</td>
                         {% endfor %}
@@ -141,7 +141,7 @@
                 <tbody>
                     {% for row in jungsung_grouped_data %}
                     <tr>
-                        <td class="text-start franchise-col">{{ row.jungsung.business_name }}</td>
+                        <td class="text-start franchise-col">{{ row.jungsung.contact_person or row.jungsung.business_name }}</td>
                         {% for f in all_franchises %}
                         <td>{{ "{:,}".format(row.franchises[f.id].amount) }}</td>
                         {% endfor %}

@@ -293,7 +293,7 @@
                 <select name="jungsung_id" class="form-select form-select-sm">
                     <option value="">전체</option>
                     {% for jungsung in jungsungs %}
-                    <option value="{{ jungsung.id }}" {% if filters.jungsung_id == jungsung.id %}selected{% endif %}>{{ jungsung.business_name }}</option>
+                    <option value="{{ jungsung.id }}" {% if filters.jungsung_id == jungsung.id %}selected{% endif %}>{{ jungsung.contact_person or jungsung.business_name }}</option>
                     {% endfor %}
                 </select>
             </div>
@@ -337,7 +337,7 @@
                     {% for row in group.rows %}
                     <tr>
                         {% if loop.first %}
-                        <td rowspan="{{ group.rows|length + 1 }}" class="align-middle fw-bold">{{ group.jungsung.business_name if group.jungsung else '-' }}</td>
+                        <td rowspan="{{ group.rows|length + 1 }}" class="align-middle fw-bold">{{ (group.jungsung.contact_person or group.jungsung.business_name) if group.jungsung else '-' }}</td>
                         {% endif %}
                         <td>{{ row.franchise.name if row.franchise else '-' }}</td>
                         <td>{{ row.category }}</td>

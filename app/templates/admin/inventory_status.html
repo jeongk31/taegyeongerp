@@ -497,7 +497,7 @@
                 <select name="jungsung_id" class="form-select form-select-sm">
                     <option value="">선택</option>
                     {% for jungsung in jungsungs %}
-                    <option value="{{ jungsung.id }}" {% if filters.jungsung_id == jungsung.id %}selected{% endif %}>{{ jungsung.business_name }}</option>
+                    <option value="{{ jungsung.id }}" {% if filters.jungsung_id == jungsung.id %}selected{% endif %}>{{ jungsung.contact_person or jungsung.business_name }}</option>
                     {% endfor %}
                 </select>
             </div>
@@ -539,7 +539,7 @@
                 <tbody>
                     {% for stat in jungsung_stats %}
                     <tr>
-                        <td>{{ stat.jungsung.business_name if stat.jungsung else '-' }}</td>
+                        <td>{{ (stat.jungsung.contact_person or stat.jungsung.business_name) if stat.jungsung else '-' }}</td>
                         <td>{{ stat.franchise.name if stat.franchise else '-' }}</td>
                         <td>{{ stat.category }}</td>
                         <td class="text-end">{{ '{:,}'.format(stat.shipment) }}</td>

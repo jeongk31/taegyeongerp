@@ -89,7 +89,7 @@
                         <td>{{ store.owner_name or '-' }}</td>
                         <td>{{ store.owner_phone or '-' }}</td>
                         <td>{{ store.branch.name if store.branch else '-' }}</td>
-                        <td>{{ store.jungsung.business_name if store.jungsung else '-' }}</td>
+                        <td>{{ (store.jungsung.contact_person or store.jungsung.business_name) if store.jungsung else '-' }}</td>
                         <td><span class="bad-debt-badge">악성미수</span></td>
                     </tr>
                     {% else %}

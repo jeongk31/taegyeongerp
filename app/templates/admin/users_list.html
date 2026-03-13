@@ -62,7 +62,7 @@
                             {% elif user.franchise %}
                                 {{ user.franchise.name }}
                             {% elif user.jungsung %}
-                                {{ user.jungsung.business_name }}
+                                {{ user.jungsung.contact_person or user.jungsung.business_name }}
                             {% else %}
                                 -
                             {% endif %}

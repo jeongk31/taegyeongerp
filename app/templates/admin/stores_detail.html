@@ -48,7 +48,7 @@
                         <div class="detail-label">담당 중상</div>
                     </div>
                     <div class="col-8">
-                        <div class="detail-value">{{ store.jungsung.business_name if store.jungsung else '-' }}</div>
+                        <div class="detail-value">{{ (store.jungsung.contact_person or store.jungsung.business_name) if store.jungsung else '-' }}</div>
                     </div>
                 </div>
                 <div class="row mb-3">
