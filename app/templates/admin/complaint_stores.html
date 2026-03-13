@@ -112,6 +112,7 @@
                         <th rowspan="2" style="width: 130px;">연락처</th>
                         <th rowspan="2" style="width: 120px;">거래처</th>
                         <th rowspan="2" style="width: 120px;">담당중상</th>
+                        <th rowspan="2" style="width: 150px;">메모</th>
                         <th colspan="3" class="table-secondary">자동 플래그</th>
                         <th colspan="3" class="table-info">수동 플래그</th>
                     </tr>
@@ -133,6 +134,7 @@
                         <td>{{ store.owner_phone or '-' }}</td>
                         <td>{{ store.branch.name if store.branch else '-' }}</td>
                         <td>{{ store.jungsung.business_name if store.jungsung else '-' }}</td>
+                        <td class="store-name" style="font-size: 0.75rem; color: #666; max-width: 150px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="{{ store.memo or '' }}">{{ store.memo or '' }}</td>
 
                         <!-- Automatic flags (read-only) -->
                         <td>
@@ -170,7 +172,7 @@
                     </tr>
                     {% else %}
                     <tr>
-                        <td colspan="12" class="text-center text-muted py-4">
+                        <td colspan="13" class="text-center text-muted py-4">
                             등록된 매장이 없습니다.
                         </td>
                     </tr>

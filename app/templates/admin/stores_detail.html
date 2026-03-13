@@ -67,12 +67,20 @@
                         <div class="detail-value">{{ store.owner_phone or '-' }}</div>
                     </div>
                 </div>
-                <div class="row">
+                <div class="row mb-3">
                     <div class="col-4">
                         <div class="detail-label">주소</div>
                     </div>
                     <div class="col-8">
                         <div class="detail-value">{{ store.address or '-' }}</div>
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="col-4">
+                        <div class="detail-label">메모</div>
+                    </div>
+                    <div class="col-8">
+                        <div class="detail-value" style="color: #666;">{{ store.memo or '-' }}</div>
                     </div>
                 </div>
             </div>

@@ -1028,6 +1028,7 @@ def stores_add_inline():
     owner_name = request.form.get('owner_name')
     owner_phone = request.form.get('owner_phone')
     address = request.form.get('address')
+    memo = request.form.get('memo')
 
     if not franchise_id or not name:
         flash('프랜차이즈와 매장명은 필수 입력 항목입니다.', 'danger')
@@ -1044,7 +1045,8 @@ def stores_add_inline():
         jungsung_id=int(jungsung_id) if jungsung_id else None,
         owner_name=owner_name,
         owner_phone=owner_phone,
-        address=address
+        address=address,
+        memo=memo
     )
     db.session.add(store)
     db.session.commit()
@@ -1075,6 +1077,8 @@ def stores_edit_inline(store_id):
     if current_user.is_branch():
         branch_id = current_user.branch_id
 
+    memo = request.form.get('memo')
+
     store.franchise_id = int(franchise_id)
     store.name = name
     store.branch_id = int(branch_id) if branch_id else None
@@ -1082,6 +1086,7 @@ def stores_edit_inline(store_id):
     store.owner_name = owner_name
     store.owner_phone = owner_phone
     store.address = address
+    store.memo = memo
     db.session.commit()
 
     flash('매장 정보가 수정되었습니다.', 'success')

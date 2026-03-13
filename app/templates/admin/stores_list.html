@@ -47,6 +47,7 @@
                         <th class="text-center" style="width: 50px;">폐업</th>
                         <th class="text-center" style="width: 60px;">악성미수</th>
                         <th class="text-center" style="width: 60px;">외부사입</th>
+                        <th>메모</th>
                         <th style="width: 80px;"></th>
                     </tr>
                 </thead>
@@ -55,7 +56,7 @@
                     <tr>
                         <td class="id-cell">{{ store.id }}</td>
                         <td>{{ store.franchise.name if store.franchise else '-' }}</td>
-                        <td><a href="#" class="text-decoration-none" onclick='openDetailModal({{ (store.franchise.name if store.franchise else "-")|tojson }}, {{ store.name|tojson }}, {{ (store.branch.name if store.branch else "-")|tojson }}, {{ (store.jungsung.business_name if store.jungsung else "-")|tojson }}, {{ (store.owner_name if store.owner_name else "-")|tojson }}, {{ (store.owner_phone or "-")|tojson }}, {{ (store.address if store.address else "-")|tojson }}); return false;'>{{ store.name }}</a></td>
+                        <td><a href="#" class="text-decoration-none" onclick='openDetailModal({{ (store.franchise.name if store.franchise else "-")|tojson }}, {{ store.name|tojson }}, {{ (store.branch.name if store.branch else "-")|tojson }}, {{ (store.jungsung.business_name if store.jungsung else "-")|tojson }}, {{ (store.owner_name if store.owner_name else "-")|tojson }}, {{ (store.owner_phone or "-")|tojson }}, {{ (store.address if store.address else "-")|tojson }}, {{ (store.memo or "-")|tojson }}); return false;'>{{ store.name }}</a></td>
                         <td>{{ store.branch.name if store.branch else '-' }}</td>
                         <td>{{ store.jungsung.business_name if store.jungsung else '-' }}</td>
                         <td class="text-center">
@@ -76,9 +77,10 @@
                         <td class="text-center">
                             {% if store.external_purchase_store %}<span class="status-marker status-danger"></span>{% endif %}
                         </td>
+                        <td style="max-width: 150px; font-size: 0.8rem; color: #666; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="{{ store.memo or '' }}">{{ store.memo or '' }}</td>
                         <td>
                             <div class="d-flex gap-1">
-                                <button type="button" class="btn btn-sm btn-outline-secondary" title="변경" onclick='openEditModal({{ store.id }}, {{ (store.franchise_id or "")|tojson }}, {{ store.name|tojson }}, {{ (store.branch_id or "")|tojson }}, {{ (store.jungsung_id or "")|tojson }}, {{ (store.owner_name or "")|tojson }}, {{ (store.owner_phone or "")|tojson }}, {{ (store.address or "")|tojson }})'>
+                                <button type="button" class="btn btn-sm btn-outline-secondary" title="변경" onclick='openEditModal({{ store.id }}, {{ (store.franchise_id or "")|tojson }}, {{ store.name|tojson }}, {{ (store.branch_id or "")|tojson }}, {{ (store.jungsung_id or "")|tojson }}, {{ (store.owner_name or "")|tojson }}, {{ (store.owner_phone or "")|tojson }}, {{ (store.address or "")|tojson }}, {{ (store.memo or "")|tojson }})'>
                                     <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" viewBox="0 0 16 16"><path d="M12.146.146a.5.5 0 0 1 .708 0l3 3a.5.5 0 0 1 0 .708l-10 10a.5.5 0 0 1-.168.11l-5 2a.5.5 0 0 1-.65-.65l2-5a.5.5 0 0 1 .11-.168l10-10zM11.207 2.5 13.5 4.793 14.793 3.5 12.5 1.207 11.207 2.5zm1.586 3L10.5 3.207 4 9.707V10h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.5h.293l6.5-6.5zm-9.761 5.175-.106.106-1.528 3.821 3.821-1.528.106-.106A.5.5 0 0 1 5 12.5V12h-.5a.5.5 0 0 1-.5-.5V11h-.5a.5.5 0 0 1-.468-.325z"/></svg>
                                 </button>
                                 <form method="POST" action="{{ url_for('admin.stores_delete', id=store.id) }}" style="display: inline;" onsubmit="return confirm('정말 삭제하시겠습니까?')">
@@ -91,7 +93,7 @@
                     </tr>
                     {% else %}
                     <tr>
-                        <td colspan="10" class="empty-state">
+                        <td colspan="13" class="empty-state">
                             <p>등록된 매장이 없습니다.</p>
                         </td>
                     </tr>
@@ -156,6 +158,12 @@
                             <label class="form-label">주소</label>
                             <input type="text" name="address" id="modal_address" class="form-control">
                         </div>
+                        {% if current_user.is_admin() or current_user.is_branch() %}
+                        <div class="col-12">
+                            <label class="form-label">메모</label>
+                            <input type="text" name="memo" id="modal_memo" class="form-control" placeholder="매장 관련 메모">
+                        </div>
+                        {% endif %}
                     </div>
                 </div>
                 <div class="modal-footer">
@@ -200,9 +208,13 @@
                     <div class="col-4"><span class="detail-label">점주연락처</span></div>
                     <div class="col-8"><span class="detail-value" id="detail_owner_phone"></span></div>
                 </div>
-                <div class="row">
+                <div class="row mb-2">
                     <div class="col-4"><span class="detail-label">주소</span></div>
                     <div class="col-8"><span class="detail-value" id="detail_address"></span></div>
+                </div>
+                <div class="row">
+                    <div class="col-4"><span class="detail-label">메모</span></div>
+                    <div class="col-8"><span class="detail-value" id="detail_memo" style="color: #666;"></span></div>
                 </div>
             </div>
             <div class="modal-footer">
@@ -222,7 +234,7 @@ function sortTable(value) {
     window.location.href = `{{ url_for('admin.stores_list') }}?sort=${sort}&order=${order}`;
 }
 
-function openDetailModal(franchise, name, branch, jungsung, ownerName, ownerPhone, address) {
+function openDetailModal(franchise, name, branch, jungsung, ownerName, ownerPhone, address, memo) {
     document.getElementById('detail_franchise').textContent = franchise;
     document.getElementById('detail_name').textContent = name;
     document.getElementById('detail_branch').textContent = branch;
@@ -230,6 +242,7 @@ function openDetailModal(franchise, name, branch, jungsung, ownerName, ownerPhon
     document.getElementById('detail_owner_name').textContent = ownerName;
     document.getElementById('detail_owner_phone').textContent = ownerPhone;
     document.getElementById('detail_address').textContent = address;
+    document.getElementById('detail_memo').textContent = memo;
 
     const modal = new bootstrap.Modal(document.getElementById('detailModal'));
     modal.show();
@@ -248,9 +261,11 @@ function openAddModal() {
     document.getElementById('modal_owner_name').value = '';
     document.getElementById('modal_owner_phone').value = '';
     document.getElementById('modal_address').value = '';
+    var memoEl = document.getElementById('modal_memo');
+    if (memoEl) memoEl.value = '';
 }
 
-function openEditModal(storeId, franchiseId, name, branchId, jungsungId, ownerName, ownerPhone, address) {
+function openEditModal(storeId, franchiseId, name, branchId, jungsungId, ownerName, ownerPhone, address, memo) {
     document.getElementById('storeModalLabel').textContent = '매장 변경';
     document.getElementById('modalSubmitBtn').textContent = '변경하기';
     document.getElementById('storeForm').action = `/admin/stores/${storeId}/edit-inline`;
@@ -263,6 +278,8 @@ function openEditModal(storeId, franchiseId, name, branchId, jungsungId, ownerNa
     document.getElementById('modal_owner_name').value = ownerName;
     document.getElementById('modal_owner_phone').value = ownerPhone;
     document.getElementById('modal_address').value = address;
+    var memoEl = document.getElementById('modal_memo');
+    if (memoEl) memoEl.value = memo || '';
 
     // Show modal
     const modal = new bootstrap.Modal(document.getElementById('storeModal'));

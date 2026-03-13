@@ -210,6 +210,7 @@ class Store(db.Model):
     closed_store = db.Column(db.Boolean, default=False)  # 폐업매장
     bad_debt_store = db.Column(db.Boolean, default=False)  # 악성미수매장
     external_purchase_store = db.Column(db.Boolean, default=False)  # 외부사입매장
+    memo = db.Column(db.Text, nullable=True)  # 메모
 
     is_active = db.Column(db.Boolean, default=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)

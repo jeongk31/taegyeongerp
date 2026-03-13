@@ -160,6 +160,16 @@ def create_app():
                     db.session.commit()
                     print("Migration complete: supplier_id column added to payments", flush=True)
 
+                # Migration 6: Add memo to stores
+                store_columns = [c['name'] for c in inspector.get_columns('stores')]
+                if 'memo' not in store_columns:
+                    print("Migrating stores: adding memo column...", flush=True)
+                    db.session.execute(text(
+                        "ALTER TABLE stores ADD COLUMN memo TEXT"
+                    ))
+                    db.session.commit()
+                    print("Migration complete: memo column added to stores", flush=True)
+
                 # Migration 5: Make branch_id nullable in payments (for hq_supplier type)
                 # PostgreSQL: ALTER COLUMN ... DROP NOT NULL
                 try:
